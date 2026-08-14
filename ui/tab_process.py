@@ -130,18 +130,17 @@ class ErrorSelectDialog(QDialog):
 
 
 # ─────────────────────────────────────────────────────────────────
-# 대화록 미리보기 & 1초 수동 스킵 팝업 다이얼로그
+# 대화록 미리보기 & 1초 수동 스킵 팝업 다이얼로그 (사용자 100% 확인 대기)
 # ─────────────────────────────────────────────────────────────────
 class TextPreviewSkipDialog(QDialog):
-    def __init__(self, filename: str, content: str, size_str: str, timeout_sec: int = 5, parent=None):
+    def __init__(self, filename: str, content: str, size_str: str, parent=None):
         super().__init__(parent)
         self.filename = filename
         self.content = content
         self.size_str = size_str
-        self.remaining_sec = timeout_sec
-        self.result_action = "analyze"  # 기본값: LLM 자동 분석
-        self.setWindowTitle(f"👁️ 대화록 미리보기 & 1초 수동 스킵 - {filename}")
-        self.resize(680, 500)
+        self.result_action = "skip"  # 안전 기본값
+        self.setWindowTitle(f"👁️ 대화록 미리보기 & 1초 수동 판정 - {filename}")
+        self.resize(720, 520)
         self.setStyleSheet(f"""
             QDialog {{
                 background-color: {PALETTE['bg_primary']};
@@ -157,11 +156,7 @@ class TextPreviewSkipDialog(QDialog):
                 padding: 10px;
             }}
         """)
-        self._timer = QTimer(self)
-        self._timer.setInterval(1000)
-        self._timer.timeout.connect(self._on_timer_tick)
         self._build_ui()
-        self._timer.start()
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
@@ -182,21 +177,21 @@ class TextPreviewSkipDialog(QDialog):
 
         stripped = self.content.strip()
         if len(stripped) < 15 or "연결되지 않았습니다" in stripped or "통화연결음" in stripped:
-            warn_lbl = QLabel("⚠️ [자동 감지] 대화록 내용이 너무 짧거나 파싱 불가능한 연결음 문구로 추정됩니다! [🚫 파싱 불가/스킵] 추천!")
+            warn_lbl = QLabel("⚠️ [참고 안내] 대화록 내용이 너무 짧거나 파싱 불가능한 연결음 문구로 추정됩니다. [🚫 파싱 불가/스킵] 추천!")
             warn_lbl.setStyleSheet("color: #F59E0B; font-weight: 700; font-size: 12px; margin-top: 2px;")
             layout.addWidget(warn_lbl)
 
         btn_row = QHBoxLayout()
         btn_row.setSpacing(10)
 
-        self.btn_skip = QPushButton("🚫 파싱 불가 / 스킵 (0초 스킵)")
+        self.btn_skip = QPushButton("🚫 파싱 불가 / 스킵 (0초 즉시 스킵)")
         self.btn_skip.setStyleSheet("""
             QPushButton {
                 background-color: #EF4444;
                 color: white;
                 font-weight: 700;
                 font-size: 13px;
-                padding: 10px 18px;
+                padding: 10px 20px;
                 border-radius: 6px;
             }
             QPushButton:hover {
@@ -205,14 +200,14 @@ class TextPreviewSkipDialog(QDialog):
         """)
         self.btn_skip.clicked.connect(self._on_skip)
 
-        self.btn_analyze = QPushButton(f"▶️ LLM 분석 진행 ({self.remaining_sec}초 후 자동)")
+        self.btn_analyze = QPushButton("▶️ LLM 분석 진행 (정상 대화록 분석)")
         self.btn_analyze.setStyleSheet(f"""
             QPushButton {{
                 background-color: {PALETTE['accent']};
                 color: white;
                 font-weight: 700;
                 font-size: 13px;
-                padding: 10px 18px;
+                padding: 10px 20px;
                 border-radius: 6px;
             }}
             QPushButton:hover {{
@@ -231,27 +226,15 @@ class TextPreviewSkipDialog(QDialog):
         btn_row.addWidget(self.btn_stop)
         layout.addLayout(btn_row)
 
-    def _on_timer_tick(self):
-        self.remaining_sec -= 1
-        if self.remaining_sec > 0:
-            self.btn_analyze.setText(f"▶️ LLM 분석 진행 ({self.remaining_sec}초 후 자동)")
-        else:
-            self._timer.stop()
-            self.result_action = "analyze"
-            self.accept()
-
     def _on_skip(self):
-        self._timer.stop()
         self.result_action = "skip"
         self.accept()
 
     def _on_analyze(self):
-        self._timer.stop()
         self.result_action = "analyze"
         self.accept()
 
     def _on_stop(self):
-        self._timer.stop()
         self.result_action = "stop"
         self.reject()
 
@@ -513,7 +496,6 @@ class ProcessWorker(QThread):
 
                     try:
                         content = read_txt_content(txt_p)
-                        stripped = content.strip()
 
                         def _apply_fail_tag(status_tag: str):
                             skip_res = {
@@ -547,35 +529,37 @@ class ProcessWorker(QThread):
                                 except Exception:
                                     pass
 
-                        # 💡 [원칙론적 개선 1] 15자 이하 단문 또는 스팸/연결음 문구는 팝업조차 띄우지 않고 0초 자동 사전 스킵!
-                        is_garbage = (
-                            len(stripped) < 15 or 
-                            "연결되지 않았습니다" in stripped or 
-                            "통화연결음" in stripped or
-                            "1등당첨" in stripped or
-                            "광고" in stripped
-                        )
-                        if is_garbage:
-                            self.log_signal.emit(f"   🚫 [자동 감지] 단문/스팸/연결음 ➔ '_파싱실패' 태그 부여 및 0초 자동 스킵 ({name})", "warning")
-                            _apply_fail_tag("skipped_empty")
-                            skipped_cnt += 1
-                            self.file_done_signal.emit(txt_p.stem, "skip", str(json_p), 0.0)
-                            self.progress_signal.emit(idx + 1, total_txt, "[2단계 txt >> Json]")
-                            continue
-
-                        # 💡 [신규] 대화록 실시간 미리보기 & 1초 수동 스킵 팝업 분기
+                        # 💡 [원칙 1] 대화록 실시간 미리보기 & 1초 수동 판정 체크박스 켜짐 시:
+                        # 시스템이 임의로 건너뛰거나 자동 진행하지 않고 1건도 빠짐없이 100% 팝업으로 표출하여 사장님께 확인받음!
                         if self.enable_preview_skip:
                             res_holder = []
                             self.preview_signal.emit(name, content, size_str, res_holder)
-                            user_act = res_holder[0] if res_holder else "analyze"
+                            user_act = res_holder[0] if res_holder else "skip"
 
                             if user_act == "stop":
                                 self.log_signal.emit("⏹ 사용자 요청으로 중지되었습니다.", "warning")
                                 break
                             elif user_act == "skip":
-                                # 💡 [원칙론적 개선 2] 수동 스킵 클릭 시 '_파싱실패' 태그 디스크 연동 부여 및 비동기 스킵!
-                                self.log_signal.emit(f"   🚫 사용자 판별 파싱 불가 ➔ '_파싱실패' 태그 부여 및 즉시 스킵 ({name})", "warning")
+                                # 💡 [원칙 2] 스킵 클릭 시 '_파싱실패' 태그 디스크 부여 후 0.00초 만에 즉시 다음 순서 파일 팝업으로 직행!
+                                self.log_signal.emit(f"   🚫 사용자 판별 파싱 불가 ➔ '_파싱실패' 태그 부여 및 즉시 다음 파일 팝업 ({name})", "warning")
                                 _apply_fail_tag("skipped_user")
+                                skipped_cnt += 1
+                                self.file_done_signal.emit(txt_p.stem, "skip", str(json_p), 0.0)
+                                self.progress_signal.emit(idx + 1, total_txt, "[2단계 txt >> Json]")
+                                continue
+                        else:
+                            # 💡 체크박스가 꺼져있을 때만(완전 자동 모드) 0B/초단문/스팸 자동 스킵 실행
+                            stripped = content.strip()
+                            is_garbage = (
+                                len(stripped) < 15 or 
+                                "연결되지 않았습니다" in stripped or 
+                                "통화연결음" in stripped or
+                                "1등당첨" in stripped or
+                                "광고" in stripped
+                            )
+                            if is_garbage:
+                                self.log_signal.emit(f"   🚫 [자동 감지] 단문/스팸/연결음 ➔ '_파싱실패' 태그 부여 및 0초 자동 스킵 ({name})", "warning")
+                                _apply_fail_tag("skipped_empty")
                                 skipped_cnt += 1
                                 self.file_done_signal.emit(txt_p.stem, "skip", str(json_p), 0.0)
                                 self.progress_signal.emit(idx + 1, total_txt, "[2단계 txt >> Json]")
@@ -800,8 +784,8 @@ class ProcessTab(QWidget):
         mode_box.addWidget(sort_lbl)
         mode_box.addWidget(self.combo_sort_order)
 
-        # 👁️ 대화록 실시간 미리보기 & 1초 수동 스킵 팝업 옵션 체크박스
-        self.chk_preview_skip = QCheckBox("👁️ 2단계 대화록 실시간 미리보기 & 1초 수동 스킵 (5초 카운트다운)")
+        # 👁️ 대화록 실시간 미리보기 & 1초 수동 판정 팝업 옵션 체크박스
+        self.chk_preview_skip = QCheckBox("👁️ 2단계 대화록 실시간 미리보기 & 1초 수동 판정 (스킵/분석 선택)")
         self.chk_preview_skip.setStyleSheet("""
             QCheckBox {
                 color: #10B981;
@@ -1673,9 +1657,9 @@ class ProcessTab(QWidget):
                     self.log_view.append_log(f"⚠ PC 자동 종료 명령 호출 예외: {e}", "error")
 
     def _on_preview_request(self, filename: str, content: str, size_str: str, res_holder: list):
-        """2단계 LLM 분석 직전 대화록 미리보기 & 1초 수동 스킵 모달 조치"""
+        """2단계 LLM 분석 직전 대화록 미리보기 & 1초 수동 스킵 모달 조치 (사용자 100% 판정 대기)"""
         from PyQt5.QtWidgets import QApplication
-        dialog = TextPreviewSkipDialog(filename, content, size_str, timeout_sec=5, parent=self)
+        dialog = TextPreviewSkipDialog(filename, content, size_str, parent=self)
         dialog.exec_()
         res_holder.append(dialog.result_action)
         dialog.deleteLater()
