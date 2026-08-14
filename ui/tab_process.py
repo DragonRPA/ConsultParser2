@@ -535,7 +535,7 @@ class ProcessWorker(QThread):
                                 self.log_signal.emit("⏹ 사용자 요청으로 중지되었습니다.", "warning")
                                 break
                             elif user_act == "skip":
-                                self.log_signal.emit(f"   🚫 사용자 판별 파싱 불가 ➔ 0초 수동 스킵 완료 ({size_str})", "warning")
+                                self.log_signal.emit(f"   🚫 사용자 판별 파싱 불가 ➔ 0초 즉시 수동 스킵 완료 ({size_str})", "warning")
                                 skip_result = {
                                     "audio_filename": txt_p.stem,
                                     "processing_status": "skipped_user",
@@ -546,8 +546,28 @@ class ProcessWorker(QThread):
                                 }
                                 json_p.parent.mkdir(parents=True, exist_ok=True)
                                 json_p.write_text(json.dumps(skip_result, ensure_ascii=False, indent=2), encoding="utf-8")
+
+                                # 원본 txt 및 completed_audio m4a에 '_파싱실패' 태그 부여
+                                if "_파싱실패" not in txt_p.stem:
+                                    fail_stem = f"{txt_p.stem}_파싱실패"
+                                    fail_txt_p = txt_p.parent / f"{fail_stem}.txt"
+                                    fail_json_p = json_p.parent / f"{fail_stem}.json"
+                                    try:
+                                        if txt_p.exists() and not fail_txt_p.exists():
+                                            txt_p.rename(fail_txt_p)
+                                        if json_p.exists() and not fail_json_p.exists():
+                                            json_p.rename(fail_json_p)
+                                        audio_dir = txt_p.parent.parent / "completed_audio"
+                                        old_m4a = audio_dir / f"{txt_p.stem}.m4a"
+                                        fail_m4a = audio_dir / f"{fail_stem}.m4a"
+                                        if old_m4a.exists() and not fail_m4a.exists():
+                                            old_m4a.rename(fail_m4a)
+                                    except Exception:
+                                        pass
+
                                 skipped_cnt += 1
                                 self.file_done_signal.emit(txt_p.stem, "skip", str(json_p), 0.0)
+                                self.progress_signal.emit(idx + 1, total_txt, "[2단계 txt >> Json]")
                                 continue
 
                         def _status_cb(msg: str, color: str):
@@ -1566,6 +1586,9 @@ class ProcessTab(QWidget):
             json_path = Path(json_path_str)
             if json_path not in self._error_files:
                 self._error_files.append(json_path)
+        elif status == "skip":
+            cur = int(self.llm_stat_skip.val_lbl.text())
+            self.llm_stat_skip.val_lbl.setText(str(cur + 1))
 
         if self._completed_count_in_batch > 0:
             avg = self._total_item_time_sum / self._completed_count_in_batch
@@ -1640,6 +1663,9 @@ class ProcessTab(QWidget):
 
     def _on_preview_request(self, filename: str, content: str, size_str: str, res_holder: list):
         """2단계 LLM 분석 직전 대화록 미리보기 & 1초 수동 스킵 모달 조치"""
+        from PyQt5.QtWidgets import QApplication
         dialog = TextPreviewSkipDialog(filename, content, size_str, timeout_sec=5, parent=self)
         dialog.exec_()
         res_holder.append(dialog.result_action)
+        dialog.deleteLater()
+        QApplication.processEvents()

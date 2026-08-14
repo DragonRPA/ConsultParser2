@@ -1,6 +1,9 @@
 # ConsultParser2 개발 임시 요구사항 및 완료 이력
 
-## 📌 현재 반영 완료된 요구사항 (v2.6.0.Build.1)
+## 📌 현재 반영 완료된 요구사항 (v2.6.0.Build.2)
+- [x] 수동 스킵 팝업 버튼 클릭 시 0.01초 지연도 없이 즉시 다음 파일 팝업 전환 (deleteLater + QApplication.processEvents)
+- [x] 수동 스킵 건에 대해서도 _파싱실패 파일명 태그 (.txt 및 .m4a) 1:1 자동 부여로 디스크 스캔 정합성 강화
+- [x] 수동 스킵 처리 시 UI 2단계 [스킵] 통계 카드 수치 실시간 +1 갱신 연동
 - [x] 2단계 txt >> Json LLM 추론 직전 대화록 미리보기 & 1초 수동 스킵 모달 (TextPreviewSkipDialog) 탑재
 - [x] [🚫 파싱 불가 / 스킵 (0초)] 클릭 시 LLM 35초 대기 없이 즉시 skipped_user 결과 JSON 보존 및 0초 스킵
 - [x] [⚡ 5초 자동 진행 카운트다운 타이머] 탑재로 사용자가 자리를 비워도 무한 대기 락 없이 연속 분석 보호
@@ -11,7 +14,7 @@
 - [x] UI 상단 📊 처리 정렬 순서 QComboBox 드롭다운 배치 및 설정 자동 보존
 - [x] 35초 시간 초과(Timeout) 건 timeout_error 결과 JSON 보존 및 _파싱실패 태그 자동 연동 부과
 - [x] ProcessTab._refresh_file_stats 내 timeout_error 상태 오류 카드 카운트 합산 적용
-- [x] 0B / 내용 없음 txt 파일 스킵 시 skipped_empty 상태의 JSON 결과 자동 기록으로 재시작 2단계 반복 대상 영구 차단
+- [x] 0B / 내용 없음 txt 파일 스킵 시 skipped_empty 상태의 JSON 결과 자동 기록으로 재시작 2단계 분석 목록에서 영구 차단
 - [x] scan_folder 내 0B 파일 skipped_small 플래그 정확 연동으로 2단계 스킵 통계 카드 정상 집계
 - [x] 앱 재시작 시 2단계 오류(242개) 수치 고정 원인 분석 및 3단계 재분석 성공 시 실시간 감소 메커니즘 투명 정리
 - [x] 동일 타임스탬프 중복 통화 핑퐁 카운터(_1.m4a -> _2.m4a) 무한 반복 버그 영구 소거 (3차 실행 시 Run 3: Done 0 / Total 0 완결)
