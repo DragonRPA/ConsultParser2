@@ -211,10 +211,10 @@ class ProcessWorker(QThread):
         llm_client = None
         llm_model = ""
 
-        # 1단계 Whisper STT 엔진 준비 (mode in ["all", "stt_only"])
+        # 1단계 Whisper STT 엔진 준비 (실제로 변환할 음성 잔량이 존재할 때만 로드!)
         if mode in ["all", "stt_only"]:
-            audio_items = [i for i in self.items if i.file_type == "audio"]
-            if audio_items:
+            audio_pending = [i for i in self.items if i.file_type == "audio" and not i.stt_done]
+            if audio_pending:
                 w_model = cfg.get("whisper_model", "base")
                 w_device = cfg.get("whisper_device", "auto")
                 self.log_signal.emit(f"🎙️ OpenAI Whisper STT 준비 완료 (모델: {w_model}, 디바이스: {w_device})", "info")
@@ -225,18 +225,21 @@ class ProcessWorker(QThread):
             if engine_type == "gemini":
                 api_key = cfg.get("gemini_api_key", "").strip()
                 if not api_key:
-                    self.log_signal.emit("❌ Gemini API 키가 설정되지 않았습니다. [설정] 탭에서 입력해주세요.", "error")
-                    self.status_signal.emit("❌ API 키 설정 필요", "#EF4444")
+                    self.log_signal.emit("❌ Gemini API 키가 설정되지 않았습니다. [설정] 탭에서 API 키를 입력해주세요.", "error")
+                    self.status_signal.emit("❌ Gemini API 키 필요", "#EF4444")
                     self.finished_signal.emit(0, 0, 0, 0.0, 0.0)
                     return
                 llm_client = GeminiClient(api_key)
                 llm_model = cfg.get("gemini_model", "gemini-3.5-flash-lite")
                 self.log_signal.emit(f"🔌 Google Gemini API 클라이언트 준비 완료 ({llm_model})", "success")
             else:
-                llm_client = OllamaClient(cfg["ollama_url"])
-                llm_model = cfg["model"]
+                llm_client = OllamaClient(cfg.get("ollama_url", "http://localhost:11434"))
+                llm_model = cfg.get("model", "gemma3:12b")
+                # 설명 수식어가 붙어있을 경우 순수 모델명만 추출 (예: 'gemma3:12b (...) ' -> 'gemma3:12b')
+                llm_model = llm_model.split(" ")[0].strip()
+
                 if not llm_client.ping():
-                    self.log_signal.emit(f"❌ Ollama 서버에 연결할 수 없습니다: {cfg['ollama_url']}", "error")
+                    self.log_signal.emit(f"❌ Ollama 서버에 연결할 수 없습니다: {cfg.get('ollama_url', 'http://localhost:11434')}", "error")
                     self.status_signal.emit("❌ Ollama 연결 실패", "#EF4444")
                     self.finished_signal.emit(0, 0, 0, 0.0, 0.0)
                     return
@@ -1027,6 +1030,36 @@ class ProcessTab(QWidget):
         cfg["last_output_folder"] = output_folder
         cfg["process_mode"] = mode
         save_config(cfg)
+
+        # 💡 [사전 검증 1]: 2단계 수행 모드 시 분석 엔진 접속 유효성 사전 검사
+        if mode in ["all", "llm_only"]:
+            engine_type = cfg.get("engine_type", "ollama")
+            if engine_type == "gemini":
+                api_key = cfg.get("gemini_api_key", "").strip()
+                if not api_key:
+                    QMessageBox.warning(
+                        self, "API 키 설정 필요",
+                        "⚠️ Google Gemini API 키가 설정되지 않았습니다.\n\n"
+                        "[설정] 탭으로 이동하여 Gemini API 키를 입력하거나, Ollama(로컬 LLM) 엔진으로 변경 후 다시 시도하세요."
+                    )
+                    self.log_view.append_log("❌ [분석 중단] Gemini API 키가 설정되지 않았습니다.", "error")
+                    return
+            else:
+                ollama_url = cfg.get("ollama_url", "http://localhost:11434")
+                try:
+                    from core.ollama_client import OllamaClient
+                    oc = OllamaClient(ollama_url)
+                    if not oc.ping():
+                        QMessageBox.warning(
+                            self, "Ollama 서버 연결 실패",
+                            f"⚠️ Ollama 서버에 연결할 수 없습니다:\n{ollama_url}\n\n"
+                            "Ollama 서비스를 실행 중인지 확인하거나, [설정] 탭에서 Google Gemini 엔진으로 변경하세요."
+                        )
+                        self.log_view.append_log(f"❌ [분석 중단] Ollama 서버 연결 실패 ({ollama_url})", "error")
+                        return
+                except Exception as ping_err:
+                    QMessageBox.warning(self, "엔진 연결 오류", f"Ollama 서버 확인 중 예외 발생:\n{ping_err}")
+                    return
 
         skip_bytes = cfg.get("skip_bytes", 512)
         self._all_items = scan_folder(input_folder, output_folder, skip_bytes, mode)
