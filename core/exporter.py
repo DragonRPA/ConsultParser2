@@ -9,7 +9,7 @@ from pathlib import Path
 from datetime import datetime
 
 
-def run_schema_migration(result_json_dir: Path) -> tuple[int, int]:
+def run_schema_migration(result_json_dir: Path, progress_callback=None) -> tuple[int, int]:
     """
     기존/신규 생성된 모든 JSON 파일에 "call_type" 필드가 포함되도록 100% 스키마 보완 마이그레이션을 집행합니다.
     기본값: "REPAIR"
@@ -20,8 +20,12 @@ def run_schema_migration(result_json_dir: Path) -> tuple[int, int]:
 
     json_files = list(result_json_dir.glob("*.json"))
     modified_count = 0
+    total_len = len(json_files)
 
-    for jf in json_files:
+    for idx, jf in enumerate(json_files):
+        if progress_callback and idx % 50 == 0:
+            progress_callback(f"🛠️ [4단계 마이그레이션 진행 중] JSON 스키마 call_type 검사/보완 ({idx+1} / {total_len}건)")
+
         try:
             content = jf.read_text(encoding="utf-8")
             data = json.loads(content)
@@ -43,10 +47,10 @@ def run_schema_migration(result_json_dir: Path) -> tuple[int, int]:
         except Exception:
             pass
 
-    return modified_count, len(json_files)
+    return modified_count, total_len
 
 
-def build_supabase_export(result_json_dir: Path, output_dir: Path) -> dict:
+def build_supabase_export(result_json_dir: Path, output_dir: Path, progress_callback=None) -> dict:
     """
      모든 분석 완료 JSON을 읽어:
     1) 단일 병합 JSON (merged_consults.json)
@@ -92,7 +96,11 @@ CREATE TABLE IF NOT EXISTS consult_items (
 );
 """)
 
+    total_len = len(json_files)
     for idx, jf in enumerate(json_files):
+        if progress_callback and idx % 50 == 0:
+            progress_callback(f"📦 [4단계 DB 수출 진행 중] Supabase Seed SQL & JSON 전처리 생성 중 ({idx+1} / {total_len}건)")
+
         try:
             data = json.loads(jf.read_text(encoding="utf-8"))
             if data.get("processing_status") != "success":

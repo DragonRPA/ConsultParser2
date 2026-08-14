@@ -842,12 +842,19 @@ class ProcessTab(QWidget):
             QMessageBox.warning(self, "폴더 없음", f"결과 JSON 폴더를 찾을 수 없습니다:\n{result_json_dir}")
             return
 
+        def _export_cb(msg: str):
+            self.log_view.append_log(msg, "info")
+            self.api_status_label.setText(f"⚙️ {msg}")
+            self.api_status_label.setStyleSheet("color: #3B82F6; font-weight: 700; font-size: 13px; white-space: nowrap;")
+            from PyQt5.QtWidgets import QApplication
+            QApplication.processEvents()
+
         self.log_view.append_log("🛠️ [4단계 시작] 전사 JSON 스키마 call_type 백필 마이그레이션 실행 중...", "info")
-        mod_cnt, total_cnt = run_schema_migration(result_json_dir)
+        mod_cnt, total_cnt = run_schema_migration(result_json_dir, progress_callback=_export_cb)
         self.log_view.append_log(f"   ✅ 스키마 보완 마이그레이션 완료 (수정: {mod_cnt}건 / 전체: {total_cnt}건)", "success")
 
         self.log_view.append_log("📦 [4단계 진행] merged_consults.json 병합 및 Supabase DB 전처리 수출 파일 생성 중...", "info")
-        res = build_supabase_export(result_json_dir, export_out_dir)
+        res = build_supabase_export(result_json_dir, export_out_dir, progress_callback=_export_cb)
 
         msg = (
             f"🎉 [4단계 수출 완료!]\n\n"
@@ -857,6 +864,8 @@ class ProcessTab(QWidget):
             f"저장 폴더: {export_out_dir}"
         )
         self.log_view.append_log(msg, "success")
+        self.api_status_label.setText("⚪ 통신 대기 중")
+        self.api_status_label.setStyleSheet(f"color: {PALETTE['text_muted']}; font-weight: 600; font-size: 13px; white-space: nowrap;")
 
         reply = QMessageBox.information(
             self, "4단계 수출 완료 안내",
@@ -931,10 +940,14 @@ class ProcessTab(QWidget):
 
         def _scan_callback(msg: str, level: str):
             self.log_view.append_log(msg, level)
+            self.api_status_label.setText(f"📂 {msg[:45]}...")
+            self.api_status_label.setStyleSheet("color: #3B82F6; font-weight: 700; font-size: 13px; white-space: nowrap;")
             from PyQt5.QtWidgets import QApplication
             QApplication.processEvents()
 
         try:
+            self.api_status_label.setText("📂 입력 폴더 스캔 및 타임스탬프 1:1 동기화 탐색 중...")
+            self.api_status_label.setStyleSheet("color: #3B82F6; font-weight: 700; font-size: 13px; white-space: nowrap;")
             self._all_items = scan_folder(
                 input_folder_path, output_folder_path, skip_bytes, mode,
                 progress_callback=_scan_callback
@@ -991,8 +1004,13 @@ class ProcessTab(QWidget):
             self.progress_bar.setMaximum(active_max)
             self.progress_bar.setValue(0)
             self.progress_bar.setFormat(f"대기 중 (%v / %m)")
+
+            self.api_status_label.setText("⚪ 통신 대기 중")
+            self.api_status_label.setStyleSheet(f"color: {PALETTE['text_muted']}; font-weight: 600; font-size: 13px; white-space: nowrap;")
         except Exception as e:
             self.log_view.append_log(f"폴더 스캔 오류: {e}", "error")
+            self.api_status_label.setText("❌ 폴더 스캔 오류 발생")
+            self.api_status_label.setStyleSheet("color: #EF4444; font-weight: 700; font-size: 13px; white-space: nowrap;")
 
     def _on_timer_tick(self):
         if self._start_timestamp > 0:
