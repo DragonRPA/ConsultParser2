@@ -1,6 +1,7 @@
 # ConsultParser2 개발 임시 요구사항 및 완료 이력
 
-## 📌 현재 반영 완료된 요구사항 (v1.2.5.Build.1)
+## 📌 현재 반영 완료된 요구사항 (v1.2.6.Build.1)
+- [x] 2단계/3단계 단일 통합 전사 표준 분석 프롬프트 (call_type 상향 포함) 전격 적용
 - [x] 분석 프롬프트 접이식(Collapsible Accordion) UI 개편 (보고 싶을 때만 펼쳐보기)
 - [x] 3단계 재분석 전용 프롬프트 정립 및 편집기 신설 (call_type REPAIR/INQUIRY/IRRELEVANT 전용 판별)
 - [x] Implementation Plan 4단계 완전 집행 완료 (4,107개 전수 call_type 백필, merged_consults.json, supabase_export.json, supabase_seed.sql 4,388건 디테일 생성)
