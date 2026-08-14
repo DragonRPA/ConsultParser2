@@ -326,8 +326,16 @@ def sync_filenames_by_timestamp(
             ts = extract_timestamp_from_filename(orig_file.name, valid_ts_map=txt_ts_map)
             if ts and ts in txt_ts_map:
                 matched_txt = txt_ts_map[ts]
-                expected_audio_name = f"{matched_txt.stem}{ext}"
-                if orig_file.name != expected_audio_name:
+                clean_stem = matched_txt.stem.replace(" ", "_")
+                clean_stem = re.sub(r"_+", "_", clean_stem)
+                expected_audio_name = f"{clean_stem}{ext}"
+
+                # 이미 완벽 일치하거나 중복 번호(_1, _2 등)가 부여된 경우 핑퐁 반복 차단!
+                is_already_synced = (
+                    orig_file.name == expected_audio_name
+                    or re.match(r"^" + re.escape(clean_stem) + r"_\d+" + re.escape(ext) + r"$", orig_file.name)
+                )
+                if not is_already_synced:
                     target_path = _get_unique_path(root_path / expected_audio_name)
                     if orig_file != target_path:
                         rename_tasks.append((orig_file, target_path))
@@ -341,8 +349,15 @@ def sync_filenames_by_timestamp(
                 ts = extract_timestamp_from_filename(audio_file.name, valid_ts_map=txt_ts_map)
                 if ts and ts in txt_ts_map:
                     matched_txt = txt_ts_map[ts]
-                    expected_audio_name = f"{matched_txt.stem}{ext}"
-                    if audio_file.name != expected_audio_name:
+                    clean_stem = matched_txt.stem.replace(" ", "_")
+                    clean_stem = re.sub(r"_+", "_", clean_stem)
+                    expected_audio_name = f"{clean_stem}{ext}"
+
+                    is_already_synced = (
+                        audio_file.name == expected_audio_name
+                        or re.match(r"^" + re.escape(clean_stem) + r"_\d+" + re.escape(ext) + r"$", audio_file.name)
+                    )
+                    if not is_already_synced:
                         target_path = _get_unique_path(completed_audio_dir / expected_audio_name)
                         if audio_file != target_path:
                             rename_tasks.append((audio_file, target_path))
@@ -353,8 +368,15 @@ def sync_filenames_by_timestamp(
             ts = extract_timestamp_from_filename(json_file.name, valid_ts_map=txt_ts_map)
             if ts and ts in txt_ts_map:
                 matched_txt = txt_ts_map[ts]
-                expected_json_name = f"{matched_txt.stem}.json"
-                if json_file.name != expected_json_name:
+                clean_stem = matched_txt.stem.replace(" ", "_")
+                clean_stem = re.sub(r"_+", "_", clean_stem)
+                expected_json_name = f"{clean_stem}.json"
+
+                is_already_synced = (
+                    json_file.name == expected_json_name
+                    or re.match(r"^" + re.escape(clean_stem) + r"_\d+\.json$", json_file.name)
+                )
+                if not is_already_synced:
                     target_json_path = _get_unique_path(result_json_dir / expected_json_name)
                     if json_file != target_json_path:
                         rename_tasks.append((json_file, target_json_path))

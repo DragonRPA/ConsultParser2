@@ -137,6 +137,8 @@ class STTFilenameParser:
         model_name = re.sub(r'[\\/:*?"<>|]', '', model_name).strip()
 
         # 언더스코어 연속 발생 정리
+        # 공백(Space)을 언더바(_)로 치환 및 연속 언더바 치환 정제 (파일명 내 공백 금지 전사 표준)
+        customer_name = customer_name.replace(" ", "_")
         customer_name = re.sub(r'_+', '_', customer_name).strip('_')
 
         if not customer_name:
@@ -150,7 +152,8 @@ class STTFilenameParser:
         else:
             new_filename = f"{dt_str}_{customer_name}{target_ext}"
 
-        # 연속 언더바 치환 정제
+        # 파일명 내 모든 공백 제거 및 연속 언더바 치환 정제
+        new_filename = new_filename.replace(" ", "_")
         new_filename = re.sub(r'_+', '_', new_filename)
 
         return {
