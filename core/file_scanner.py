@@ -61,18 +61,28 @@ def norm_ts(raw_ts: str) -> str:
     return raw_ts
 
 
-# 💡 전화번호 숫자(예: 0222914256_190430)가 타임스탬프로 오인되지 않도록 YYYYMMDD_HHMMSS / YYMMDD_HHMMSS 날짜/시간 정밀 추출 정규식
-PRECISE_TS_PATTERN = re.compile(
-    r"(?:^|[_\s-])((?:20\d{2}|\d{2})(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])_\d{6})(?:[_\s.-]|$)"
+# 💡 (00~23시)(00~59분)(00~59초) 엄격 시분초 정밀 타임스탬프 추출 정규식
+STRICT_TS_PATTERN = re.compile(
+    r"(?:^|[_\s-])((?:20\d{2}|\d{2})(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])_(?:[01]\d|2[0-3])[0-5]\d[0-5]\d)(?:[_\s.-]|$)"
 )
 
 
-def extract_timestamp_from_filename(filename: str) -> str:
-    """파일명에서 진짜 YYYYMMDD_HHMMSS 또는 YYMMDD_HHMMSS 타임스탬프만을 정밀 추출하여 호환 정규화합니다."""
-    matches = PRECISE_TS_PATTERN.findall(filename)
-    if matches:
-        return norm_ts(matches[-1])  # 보통 파일명 뒷부분에 시분초 타임스탬프가 위치함
-    return ""
+def extract_timestamp_from_filename(filename: str, valid_ts_map: Optional[dict] = None) -> str:
+    """
+    파일명에서 진짜 YYYYMMDD_HHMMSS 또는 YYMMDD_HHMMSS 타임스탬프만을 정밀 추출합니다.
+    valid_ts_map이 제공될 경우 매칭되는 타임스탬프를 100% 우선 선택합니다.
+    """
+    matches = STRICT_TS_PATTERN.findall(filename)
+    if not matches:
+        return ""
+
+    if valid_ts_map:
+        for m in reversed(matches):
+            ts = norm_ts(m)
+            if ts in valid_ts_map:
+                return ts
+
+    return norm_ts(matches[-1])
 
 
 def _build_json_timestamp_map(result_json_dir: Path) -> dict[str, Path]:
@@ -278,7 +288,7 @@ def sync_filenames_by_timestamp(
             if ext not in AUDIO_EXTS:
                 continue
 
-            ts = extract_timestamp_from_filename(orig_file.name)
+            ts = extract_timestamp_from_filename(orig_file.name, valid_ts_map=txt_ts_map)
             if ts and ts in txt_ts_map:
                 matched_txt = txt_ts_map[ts]
                 expected_audio_name = f"{matched_txt.stem}{ext}"
@@ -293,7 +303,7 @@ def sync_filenames_by_timestamp(
         for audio_file in completed_audio_dir.glob("*.*"):
             ext = audio_file.suffix.lower()
             if ext in AUDIO_EXTS:
-                ts = extract_timestamp_from_filename(audio_file.name)
+                ts = extract_timestamp_from_filename(audio_file.name, valid_ts_map=txt_ts_map)
                 if ts and ts in txt_ts_map:
                     matched_txt = txt_ts_map[ts]
                     expected_audio_name = f"{matched_txt.stem}{ext}"
@@ -305,7 +315,7 @@ def sync_filenames_by_timestamp(
     # 1-C. JSON 파일 변경 대상 수집
     if result_json_dir.exists():
         for json_file in result_json_dir.glob("*.json"):
-            ts = extract_timestamp_from_filename(json_file.name)
+            ts = extract_timestamp_from_filename(json_file.name, valid_ts_map=txt_ts_map)
             if ts and ts in txt_ts_map:
                 matched_txt = txt_ts_map[ts]
                 expected_json_name = f"{matched_txt.stem}.json"
