@@ -1,10 +1,12 @@
 # ConsultParser2 개발 임시 요구사항 및 완료 이력
 
-## 📌 현재 반영 완료된 요구사항 (v2.6.0.Build.3)
-- [x] 파일명에 _파싱실패 태그가 포함된 파일 2단계 분석 대상(txt_targets)에서 100% 무조건 스킵 제외 (팝업 재출현 버그 영구 제거)
+## 📌 현재 반영 완료된 요구사항 (v2.7.0.Build.1)
+- [x] [헌장 V 5.4 이행] 파싱 불가 스킵 프로세스 원칙론적 전면 재설계 개편 완결
+- [x] 스킵 클릭 시 구글드라이브 동기 리네임 및 JSON 디스크 I/O 100% 제거 (0.00초 인메모리 Pass)
+- [x] 15자 미만 단문/스팸/연결음 대화록 팝업 미출현 100% 자동 사전 차단 필터 (Zero-Click Auto Filter) 전격 탑재
+- [x] 파일명에 _파싱실패 태그가 포함된 파일 2단계 분석 대상(txt_targets)에서 100% 무조건 스킵 제외
 - [x] 결과 JSON에 skipped_user, skipped_empty, parse_error, timeout_error 상태가 기록된 파일 2단계 대상 제외 완결
 - [x] 수동 스킵 팝업 버튼 클릭 시 0.01초 지연도 없이 즉시 다음 파일 팝업 전환 (deleteLater + QApplication.processEvents)
-- [x] 수동 스킵 건에 대해서도 _파싱실패 파일명 태그 (.txt 및 .m4a) 1:1 자동 부여로 디스크 스캔 정합성 강화
 - [x] 수동 스킵 처리 시 UI 2단계 [스킵] 통계 카드 수치 실시간 +1 갱신 연동
 - [x] 2단계 txt >> Json LLM 추론 직전 대화록 미리보기 & 1초 수동 스킵 모달 (TextPreviewSkipDialog) 탑재
 - [x] [🚫 파싱 불가 / 스킵 (0초)] 클릭 시 LLM 35초 대기 없이 즉시 skipped_user 결과 JSON 보존 및 0초 스킵
