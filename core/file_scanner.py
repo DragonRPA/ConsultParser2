@@ -69,20 +69,40 @@ STRICT_TS_PATTERN = re.compile(
 
 def extract_timestamp_from_filename(filename: str, valid_ts_map: Optional[dict] = None) -> str:
     """
-    파일명에서 진짜 YYYYMMDD_HHMMSS 또는 YYMMDD_HHMMSS 타임스탬프만을 정밀 추출합니다.
-    valid_ts_map이 제공될 경우 매칭되는 타임스탬프를 100% 우선 선택합니다.
+    파일명에서 YYYYMMDD_HHMMSS 또는 YYMMDD_HHMMSS 타임스탬프를 100% 무결하게 추출합니다.
+    valid_ts_map이 제공될 경우 매칭되는 타임스탬프를 슬라이딩 윈도우 방식으로 최우선 선택합니다.
     """
-    matches = STRICT_TS_PATTERN.findall(filename)
-    if not matches:
-        return ""
+    candidates = []
 
-    if valid_ts_map:
-        for m in reversed(matches):
+    # 1. 8자리_6자리 (YYYYMMDD_HHMMSS)
+    for m in re.findall(r"(\d{8}_\d{6})", filename):
+        candidates.append(norm_ts(m))
+
+    # 2. 언더바/공백/하이픈 구분 6자리 토큰 슬라이딩 윈도우 (YYMMDD_HHMMSS)
+    subparts = re.split(r"[_,\s-]+", Path(filename).stem)
+    for i in range(len(subparts) - 1):
+        p1, p2 = subparts[i], subparts[i + 1]
+        if len(p1) == 6 and len(p2) == 6 and p1.isdigit() and p2.isdigit():
+            candidates.append(norm_ts(f"{p1}_{p2}"))
+
+    candidates = list(dict.fromkeys(candidates))
+
+    if valid_ts_map and candidates:
+        for c in candidates:
+            if c in valid_ts_map:
+                return c
+
+    # 3. 엄격 시분초 정규식 fallback
+    strict_matches = STRICT_TS_PATTERN.findall(filename)
+    if strict_matches:
+        for m in reversed(strict_matches):
             ts = norm_ts(m)
-            if ts in valid_ts_map:
+            if valid_ts_map and ts in valid_ts_map:
                 return ts
+        if not candidates:
+            return norm_ts(strict_matches[-1])
 
-    return norm_ts(matches[-1])
+    return candidates[-1] if candidates else ""
 
 
 def _build_json_timestamp_map(result_json_dir: Path) -> dict[str, Path]:
