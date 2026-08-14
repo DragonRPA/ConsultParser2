@@ -28,7 +28,7 @@ class OllamaClient:
         model: str,
         prompt: str,
         content: str,
-        timeout: int = 300,
+        timeout: int = 35,
     ) -> str:
         """
         Ollama generate API를 호출하고 LLM 응답 텍스트를 반환합니다.
@@ -37,7 +37,7 @@ class OllamaClient:
             model: 사용할 Ollama 모델명 (예: 'gemma3:12b')
             prompt: 프롬프트 템플릿 ({{CONTENT}} 치환자 포함)
             content: {{CONTENT}}에 삽입할 실제 텍스트
-            timeout: 요청 타임아웃(초)
+            timeout: 요청 타임아웃(초) - 기본값 35초로 90초 대기 방지
 
         Returns:
             LLM이 생성한 텍스트 문자열
@@ -57,7 +57,7 @@ class OllamaClient:
             "stream": False,
             "options": {
                 "temperature": 0.1,   # 분석 목적이므로 낮은 온도
-                "num_predict": 2048,
+                "num_predict": 768,   # JSON 생성용 적정 토큰 제한 (90초 헛생성 방지)
             },
         }
 
