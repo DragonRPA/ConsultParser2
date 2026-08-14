@@ -213,11 +213,15 @@ class SettingsTab(QWidget):
         gemini_layout.addWidget(self.gemini_status_label)
         gemini_layout.addSpacing(12)
 
-        gemini_layout.addWidget(self._field_label("Gemini 모델 선택 (지정 모델 4종)"))
+        gemini_layout.addWidget(self._field_label("Gemini 모델 선택 (최신 Flash 라인업 / 직접 입력 가능)"))
         self.gemini_model_combo = QComboBox()
+        self.gemini_model_combo.setEditable(True)  # 자유 모델명 직접 입력 허용!
         self.gemini_model_combo.addItems([
+            "gemini-3.7-flash (🚀 3.7세대 Flash / 최신 초고속 고성능 추천)",
             "gemini-3.5-flash-lite (✨ 3.5세대 Flash Lite / 최신 최저비용 추천)",
             "gemini-3.1-flash-lite (✨ 3.1세대 Flash Lite)",
+            "gemini-2.5-flash (⚡ 2.5세대 Flash)",
+            "gemini-2.5-flash-lite (⚡ 2.5세대 Flash Lite)",
             "gemini-2.0-flash (⚡ 2.0세대 Flash / 초고속)",
             "gemini-1.5-flash (⚡ 1.5세대 Flash / 표준)",
         ])

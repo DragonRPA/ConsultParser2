@@ -1,6 +1,7 @@
 # ConsultParser2 개발 임시 요구사항 및 완료 이력
 
-## 📌 현재 반영 완료된 요구사항 (v1.2.7.Build.1)
+## 📌 현재 반영 완료된 요구사항 (v1.2.8.Build.1)
+- [x] Google Gemini 3.7 Flash (`gemini-3.7-flash`), 2.5 Flash 최신 모델 라인업 전격 탑재 및 자유 직접 입력 Editable 드롭다운 지원
 - [x] 분석 시작 시 멈춤(Silent Freeze) 버그 완전 해결 (사전 검증 팝업 및 순수 모델명 파싱)
 - [x] 1단계 STT 미변환 잔량 0건 시 Whisper STTEngine 지연 로딩 최적화
 - [x] 2단계/3단계 단일 통합 전사 표준 분석 프롬프트 (call_type 상향 포함) 전격 적용
