@@ -464,23 +464,28 @@ class ProcessWorker(QThread):
 
                 is_fail_tagged = "_파싱실패" in item.target_txt_path.stem or "_파싱실패" in item.original_path.stem or prev_json.name.endswith("_파싱실패.json")
 
-                if is_fail_tagged and prev_json.exists():
+                # 💡 [핵심 수정]: 파일명에 '_파싱실패' 태그가 부과되어 있는 파일은 2단계 대상에서 무조건 제외!
+                if is_fail_tagged:
+                    skipped_cnt += 1
+                    continue
+
+                # 💡 이전 결과 JSON이 존재하고 이미 완료/스킵/오류 기록이 있는 건 역시 무조건 제외!
+                if prev_json.exists():
                     try:
                         prev_data = json.loads(prev_json.read_text(encoding="utf-8"))
                         prev_status = prev_data.get("processing_status")
-                        prev_model = prev_data.get("model_used", "").split(" ")[0].strip()
-                        # 동일 모델로 이미 파싱 실패한 건이면 90초 무한낭비 방지를 위해 스킵! (타 모델 변경 시에는 재분석 시도 허용!)
-                        if prev_status == "parse_error" and prev_model == llm_model:
-                            skipped_cnt += 1
+                        if prev_status in ["success", "skipped_user", "skipped_empty", "parse_error", "timeout_error"]:
+                            if prev_status != "success":
+                                skipped_cnt += 1
                             continue
                     except Exception:
                         pass
 
                 if item.file_type == "text" and not item.skipped_small:
-                    if not item.json_done or is_fail_tagged:
+                    if not item.json_done:
                         txt_targets.append((item.original_path, item.target_json_path, item.size_bytes))
                 elif item.file_type == "audio" and item.stt_done:
-                    if not item.json_done or is_fail_tagged:
+                    if not item.json_done:
                         txt_size = item.target_txt_path.stat().st_size if item.target_txt_path.exists() else 0
                         txt_targets.append((item.target_txt_path, item.target_json_path, txt_size))
 
