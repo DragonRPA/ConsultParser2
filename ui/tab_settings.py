@@ -524,15 +524,30 @@ class SettingsTab(QWidget):
         self.url_edit.setText(self.config.get("ollama_url", "http://localhost:11434"))
         self.gemini_key_edit.setText(self.config.get("gemini_api_key", ""))
 
-        saved_g_model = self.config.get("gemini_model", "gemini-3.5-flash-lite")
-        found = False
-        for i in range(self.gemini_model_combo.count()):
-            if saved_g_model in self.gemini_model_combo.itemText(i):
-                self.gemini_model_combo.setCurrentIndex(i)
-                found = True
-                break
-        if not found:
-            self.gemini_model_combo.setCurrentIndex(0)
+        saved_g_list = self.config.get("gemini_model_list", [])
+        saved_g_model = self.config.get("gemini_model", "gemini-3.7-flash")
+
+        if saved_g_list:
+            self.gemini_model_combo.clear()
+            self.gemini_model_combo.addItems(saved_g_list)
+            if saved_g_model in saved_g_list:
+                self.gemini_model_combo.setCurrentText(saved_g_model)
+            elif saved_g_model:
+                self.gemini_model_combo.addItem(saved_g_model)
+                self.gemini_model_combo.setCurrentText(saved_g_model)
+        else:
+            found = False
+            for i in range(self.gemini_model_combo.count()):
+                if saved_g_model in self.gemini_model_combo.itemText(i):
+                    self.gemini_model_combo.setCurrentIndex(i)
+                    found = True
+                    break
+            if not found:
+                self.gemini_model_combo.setCurrentIndex(0)
+
+        # Gemini API 키가 존재하는 경우 앱 시작 시 백그라운드에서 실시간 최신 모델 자동 조회
+        if self.gemini_key_edit.text().strip():
+            self._fetch_gemini_models()
 
         saved_w_model = self.config.get("whisper_model", "base")
         for i in range(self.whisper_model_combo.count()):
@@ -683,6 +698,11 @@ class SettingsTab(QWidget):
             if not self.model_combo.itemText(i).startswith("──")
         ]
 
+        current_gemini_models = [
+            self.gemini_model_combo.itemText(i)
+            for i in range(self.gemini_model_combo.count())
+        ]
+
         self.config.update({
             "engine_type": engine_type,
             "ollama_url": url,
@@ -690,6 +710,7 @@ class SettingsTab(QWidget):
             "model_list": current_models,
             "gemini_api_key": gemini_key,
             "gemini_model": gemini_model,
+            "gemini_model_list": current_gemini_models,
             "whisper_model": whisper_model,
             "whisper_device": whisper_device,
             "skip_bytes": skip_bytes,

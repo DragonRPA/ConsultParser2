@@ -62,7 +62,8 @@ DEFAULT_CONFIG = {
     "model": "gemma3:12b",
     "model_list": [],
     "gemini_api_key": "",
-    "gemini_model": "gemini-3.5-flash-lite",
+    "gemini_model": "gemini-3.7-flash",
+    "gemini_model_list": [],
     "whisper_model": "base",              # base, small, medium, large-v3
     "whisper_device": "auto",             # auto, cpu, cuda
     "process_mode": "all",                # "all" (1+2단계), "stt_only" (1단계만), "llm_only" (2단계만)
