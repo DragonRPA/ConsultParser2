@@ -1,6 +1,8 @@
 # ConsultParser2 개발 임시 요구사항 및 완료 이력
 
-## 📌 현재 반영 완료된 요구사항 (v2.4.0.Build.1)
+## 📌 현재 반영 완료된 요구사항 (v2.5.0.Build.1)
+- [x] 파일 처리 정렬 순서 선택 신설 (⚖️ 용량 오름차순 - 0B/소용량 우선 추천 vs ⏰ 타임스탬프 오름차순)
+- [x] UI 상단 📊 처리 정렬 순서 QComboBox 드롭다운 배치 및 설정 자동 보존
 - [x] 35초 시간 초과(Timeout) 건 timeout_error 결과 JSON 보존 및 _파싱실패 태그 자동 연동 부과
 - [x] ProcessTab._refresh_file_stats 내 timeout_error 상태 오류 카드 카운트 합산 적용
 - [x] 0B / 내용 없음 txt 파일 스킵 시 skipped_empty 상태의 JSON 결과 자동 기록으로 재시작 2단계 반복 대상 영구 차단

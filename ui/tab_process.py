@@ -183,11 +183,12 @@ class ProcessWorker(QThread):
     file_done_signal = pyqtSignal(str, str, str, float)         # (file_stem, status, json_path, elapsed_sec)
     finished_signal  = pyqtSignal(int, int, int, float, float) # (success, error, skipped, total_elapsed_sec, avg_sec)
 
-    def __init__(self, items: list[FileItem], config: dict, process_mode: str = "all"):
+    def __init__(self, items: list[FileItem], config: dict, process_mode: str = "all", sort_order: str = "size_asc"):
         super().__init__()
         self.items = items
         self.config = config
         self.process_mode = process_mode  # "all", "stt_only", "llm_only"
+        self.sort_order = sort_order      # "size_asc", "timestamp_asc"
         self._stop_requested = False
         self._mutex = QMutex()
 
@@ -258,7 +259,13 @@ class ProcessWorker(QThread):
             total_audio = len(audio_pending)
 
             if total_audio > 0:
-                self.log_signal.emit(f"🎧 [1단계 작업 시작] 총 {total_audio}개 음성 파일 STT 변환 및 정형화 진행", "info")
+                # 💡 [정렬 지원]: 용량 오름차순 vs 타임스탬프 오름차순
+                if self.sort_order == "size_asc":
+                    audio_pending.sort(key=lambda x: (x.size_bytes, x.original_path.name))
+                    self.log_signal.emit(f"🎧 [1단계 작업 시작] 총 {total_audio}개 음성 파일 (⚖️ 용량 오름차순 정렬) STT 변환 진행", "info")
+                else:
+                    audio_pending.sort(key=lambda x: x.original_path.name)
+                    self.log_signal.emit(f"🎧 [1단계 작업 시작] 총 {total_audio}개 음성 파일 (⏰ 타임스탬프 오름차순 정렬) STT 변환 진행", "info")
                 self.status_signal.emit("🎙️ 음성 STT 변환 연산 중...", "#3B82F6")
 
                 for idx, item in enumerate(audio_pending):
@@ -350,7 +357,13 @@ class ProcessWorker(QThread):
             total_txt = len(txt_targets)
 
             if total_txt > 0:
-                self.log_signal.emit(f"🤖 [2단계 작업 시작] 총 {total_txt}개 .txt 파일 LLM JSON 분석 진행", "info")
+                # 💡 [정렬 지원]: 용량 오름차순 (0B/소용량 파일 최우선!) vs 타임스탬프 오름차순
+                if self.sort_order == "size_asc":
+                    txt_targets.sort(key=lambda x: (x[2], x[0].name))
+                    self.log_signal.emit(f"🤖 [2단계 작업 시작] 총 {total_txt}개 .txt 파일 (⚖️ 용량 오름차순 정렬, 0B/소용량 우선) LLM 분석 진행", "info")
+                else:
+                    txt_targets.sort(key=lambda x: x[0].name)
+                    self.log_signal.emit(f"🤖 [2단계 작업 시작] 총 {total_txt}개 .txt 파일 (⏰ 타임스탬프 오름차순 정렬) LLM 분석 진행", "info")
 
                 for idx, (txt_p, json_p, txt_sz) in enumerate(txt_targets):
                     if self._should_stop():
@@ -572,6 +585,34 @@ class ProcessTab(QWidget):
         mode_box.addWidget(self.radio_mode_stt)
         mode_box.addSpacing(20)
         mode_box.addWidget(self.radio_mode_llm)
+        mode_box.addSpacing(30)
+
+        # 📊 파일 처리 정렬 순서 선택 드롭다운
+        sort_lbl = QLabel("📊 처리 정렬 순서:")
+        sort_lbl.setStyleSheet(f"font-size: 13px; font-weight: 600; color: {PALETTE['text_secondary']}; white-space: nowrap;")
+        self.combo_sort_order = QComboBox()
+        self.combo_sort_order.addItem("⚖️ 파일 용량 오름차순 (0B / 소용량 우선 추천)", "size_asc")
+        self.combo_sort_order.addItem("⏰ 타임스탬프 오름차순 (날짜/시간순)", "timestamp_asc")
+        self.combo_sort_order.setStyleSheet(f"""
+            QComboBox {{
+                background-color: {PALETTE['bg_secondary']};
+                border: 1px solid {PALETTE['accent']};
+                border-radius: 4px;
+                padding: 4px 8px;
+                color: {PALETTE['accent']};
+                font-weight: 700;
+                font-size: 12px;
+                white-space: nowrap;
+            }}
+        """)
+
+        saved_sort = self.config.get("sort_order", "size_asc")
+        sort_idx = self.combo_sort_order.findData(saved_sort)
+        if sort_idx >= 0:
+            self.combo_sort_order.setCurrentIndex(sort_idx)
+
+        mode_box.addWidget(sort_lbl)
+        mode_box.addWidget(self.combo_sort_order)
         mode_box.addStretch()
 
         root.addLayout(mode_box)
@@ -1209,9 +1250,11 @@ class ProcessTab(QWidget):
         if hasattr(self, 'settings_tab') and self.settings_tab:
             live_cfg = self.settings_tab.get_current_config()
             cfg.update(live_cfg)
+        sort_order = self.combo_sort_order.currentData() or "size_asc"
         cfg["last_input_folder"] = input_folder
         cfg["last_output_folder"] = output_folder
         cfg["process_mode"] = mode
+        cfg["sort_order"] = sort_order
         save_config(cfg)
 
         # 💡 [사전 검증 1]: 2단계 수행 모드 시 분석 엔진 접속 유효성 사전 검사
@@ -1268,7 +1311,7 @@ class ProcessTab(QWidget):
         self.output_browse_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
 
-        self._worker = ProcessWorker(self._all_items, cfg, process_mode=mode)
+        self._worker = ProcessWorker(self._all_items, cfg, process_mode=mode, sort_order=sort_order)
         self._worker.log_signal.connect(self._on_log)
         self._worker.status_signal.connect(self._on_status_changed)
         self._worker.progress_signal.connect(self._on_progress)
