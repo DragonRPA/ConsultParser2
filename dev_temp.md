@@ -1,6 +1,8 @@
 # ConsultParser2 개발 임시 요구사항 및 완료 이력
 
-## 📌 현재 반영 완료된 요구사항 (v2.3.0.Build.1)
+## 📌 현재 반영 완료된 요구사항 (v2.4.0.Build.1)
+- [x] 35초 시간 초과(Timeout) 건 timeout_error 결과 JSON 보존 및 _파싱실패 태그 자동 연동 부과
+- [x] ProcessTab._refresh_file_stats 내 timeout_error 상태 오류 카드 카운트 합산 적용
 - [x] 0B / 내용 없음 txt 파일 스킵 시 skipped_empty 상태의 JSON 결과 자동 기록으로 재시작 2단계 반복 대상 영구 차단
 - [x] scan_folder 내 0B 파일 skipped_small 플래그 정확 연동으로 2단계 스킵 통계 카드 정상 집계
 - [x] 앱 재시작 시 2단계 오류(242개) 수치 고정 원인 분석 및 3단계 재분석 성공 시 실시간 감소 메커니즘 투명 정리

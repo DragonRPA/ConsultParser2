@@ -457,7 +457,40 @@ class ProcessWorker(QThread):
                         break
                     except Exception as e:
                         elapsed = time.time() - t0
-                        self.log_signal.emit(f"   ❌ LLM 추출 오류 ({size_str}, {elapsed:.1f}초): {e}", "error")
+                        err_msg = str(e)
+                        self.log_signal.emit(f"   ❌ LLM 추출 오류 ({size_str}, {elapsed:.1f}초): {err_msg}", "error")
+
+                        # 💡 35초 타임아웃 / LLM 통신 오류 발생 시에도 timeout_error 상태 결과 JSON을 보존하고 _파싱실패 태그 부과!
+                        err_result = {
+                            "audio_filename": txt_p.stem,
+                            "processing_status": "timeout_error" if "timeout" in err_msg.lower() else "parse_error",
+                            "error_message": err_msg,
+                            "model_used": llm_model,
+                            "customer_name": "미지정",
+                            "symptoms": [],
+                            "actions": []
+                        }
+                        try:
+                            json_p.parent.mkdir(parents=True, exist_ok=True)
+                            json_p.write_text(json.dumps(err_result, ensure_ascii=False, indent=2), encoding="utf-8")
+
+                            # 원본 txt 및 completed_audio m4a에 '_파싱실패' 태그 부여
+                            if "_파싱실패" not in txt_p.stem:
+                                fail_stem = f"{txt_p.stem}_파싱실패"
+                                fail_txt_p = txt_p.parent / f"{fail_stem}.txt"
+                                fail_json_p = json_p.parent / f"{fail_stem}.json"
+                                if txt_p.exists() and not fail_txt_p.exists():
+                                    txt_p.rename(fail_txt_p)
+                                if json_p.exists() and not fail_json_p.exists():
+                                    json_p.rename(fail_json_p)
+                                audio_dir = txt_p.parent.parent / "completed_audio"
+                                old_m4a = audio_dir / f"{txt_p.stem}.m4a"
+                                fail_m4a = audio_dir / f"{fail_stem}.m4a"
+                                if old_m4a.exists() and not fail_m4a.exists():
+                                    old_m4a.rename(fail_m4a)
+                        except Exception:
+                            pass
+
                         error_cnt += 1
                         self.file_done_signal.emit(txt_p.stem, "error", str(json_p), elapsed)
 
@@ -1111,7 +1144,8 @@ class ProcessTab(QWidget):
                 for json_file in out_dir.glob("*.json"):
                     try:
                         data = json.loads(json_file.read_text(encoding="utf-8"))
-                        if data.get("processing_status") == "parse_error":
+                        status = data.get("processing_status")
+                        if status in ["parse_error", "timeout_error"]:
                             self._error_files.append(json_file)
                     except Exception:
                         pass
