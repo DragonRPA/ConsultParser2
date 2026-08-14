@@ -1,6 +1,8 @@
 # ConsultParser2 개발 임시 요구사항 및 완료 이력
 
-## 📌 현재 반영 완료된 요구사항 (v1.3.3.Build.1)
+## 📌 현재 반영 완료된 요구사항 (v1.4.0.Build.1)
+- [x] 명시적 '🛠️ 파일명 점검 및 수정' 버튼 신설 & 백그라운드 자동 조작 차단 (`sync_filenames_by_timestamp` 분리)
+- [x] 명시적 클릭 지시 시 1건 단위 프로그레스 바 수치 및 % 실시간 시각화
 - [x] 구글 Gemini 서비스 모델 목록 영구 저장 & 시작 시 자동 로드 구축 (`gemini_model_list` 영구 저장 및 재시작 시 자동 로딩)
 - [x] 파일명 1:1 동기화 리네임 실시간 진행률 1건 단위 표출 (renamed_audio_count / renamed_json_count 실시간 카운터 리포팅)
 - [x] 실시간 작업 진행 상태 모니터링 시스템 구축 (api_status_label 및 processEvents 촘촘히 전격 배치)

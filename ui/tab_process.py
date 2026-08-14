@@ -530,9 +530,32 @@ class ProcessTab(QWidget):
         root.addLayout(folders_layout)
         root.addSpacing(10)
 
+        output_info_row = QHBoxLayout()
         self.output_label = QLabel("📂 출력 저장 경로: [폴더 선택 후 지정]")
         self.output_label.setProperty("class", "muted")
-        root.addWidget(self.output_label)
+        output_info_row.addWidget(self.output_label)
+        output_info_row.addStretch()
+
+        self.btn_sync_filenames = QPushButton("🛠️ 파일명 점검 및 수정")
+        self.btn_sync_filenames.setProperty("class", "secondary")
+        self.btn_sync_filenames.setStyleSheet(f"""
+            QPushButton {{
+                color: #F59E0B;
+                border: 1px solid #F59E0B;
+                font-weight: 700;
+                font-size: 12px;
+                padding: 4px 12px;
+                border-radius: 4px;
+                white-space: nowrap;
+            }}
+            QPushButton:hover {{
+                background-color: {PALETTE['bg_tertiary']};
+                border: 1px solid #D97706;
+            }}
+        """)
+        self.btn_sync_filenames.clicked.connect(self._on_click_sync_filenames)
+        output_info_row.addWidget(self.btn_sync_filenames)
+        root.addLayout(output_info_row)
         root.addSpacing(14)
 
         root.addWidget(make_separator())
@@ -898,6 +921,42 @@ class ProcessTab(QWidget):
     # ──────────────────────────────────────────
     # 이벤트 및 타이머 핸들러
     # ──────────────────────────────────────────
+    def _on_click_sync_filenames(self):
+        """사용자가 '🛠️ 파일명 점검 및 수정' 버튼을 클릭할 때 집행되는 명시적 파일명 정형화 핸들러"""
+        in_f = self.folder_edit.text().strip()
+        out_f = self.output_folder_edit.text().strip()
+        if not in_f or not Path(in_f).is_dir():
+            QMessageBox.warning(self, "폴더 오류", "유효한 입력 폴더를 먼저 선택해주세요.")
+            return
+
+        def _sync_cb(done: int, total: int, msg: str):
+            self.progress_bar.setMaximum(max(total, 1))
+            self.progress_bar.setValue(done)
+            pct = int((done / max(total, 1)) * 100) if total > 0 else 100
+            self.progress_bar.setFormat(f"[파일명 동기화 수정] %v / %m ({pct}%)")
+            self.log_view.append_log(msg, "info" if total > 0 else "success")
+            self.api_status_label.setText(f"🛠️ {msg[:45]}...")
+            self.api_status_label.setStyleSheet("color: #F59E0B; font-weight: 700; font-size: 13px; white-space: nowrap;")
+            from PyQt5.QtWidgets import QApplication
+            QApplication.processEvents()
+
+        self.btn_sync_filenames.setEnabled(False)
+        from core.file_scanner import sync_filenames_by_timestamp
+        completed_count, total_targets = sync_filenames_by_timestamp(in_f, out_f, progress_callback=_sync_cb)
+        self.btn_sync_filenames.setEnabled(True)
+
+        self.api_status_label.setText("⚪ 통신 대기 중")
+        self.api_status_label.setStyleSheet(f"color: {PALETTE['text_muted']}; font-weight: 600; font-size: 13px; white-space: nowrap;")
+
+        if total_targets == 0:
+            QMessageBox.information(self, "점검 완료", "✅ 모든 음성 및 JSON 파일명이 txt 기준 100% 동일하게 정형화되어 있습니다. 수정할 파일이 없습니다.")
+        else:
+            QMessageBox.information(
+                self, "파일명 수정 완료",
+                f"🎉 총 {total_targets}개 중 {completed_count}개 파일의 파일명이 txt 기준 1:1로 성공적으로 변경 수정되었습니다!"
+            )
+            self._refresh_file_stats(in_f, out_f)
+
     def _browse_folder(self):
         current = self.folder_edit.text() or "D:\\"
         folder = QFileDialog.getExistingDirectory(self, "분석 상위 폴더 선택", current)

@@ -1,7 +1,7 @@
 """
 core/file_scanner.py
 입력 상위 폴더 및 하위 모든 연도별 서브폴더의 음성(.m4a, .mp3, .wav) 및 .txt 파일을 재귀 스캔하고 출력 폴더로 매핑합니다.
-(※ 타임스탬프 유연 매칭 및 m4a/txt/json 파일명 1:1 기준 동기화 로직 포함)
+(※ 사용자 명시적 '파일명 점검 및 수정' 버튼 지시 시에만 1:1 파일명 동기화 변경 집행)
 """
 import os
 import re
@@ -95,8 +95,7 @@ def scan_folder(
 ) -> list[FileItem]:
     """
     input_folder 및 그 하위 모든 서브폴더를 재귀 탐색(os.walk)하여 FileItem 목록을 반환합니다.
-    - [m4a-txt 동기화]: 타임스탬프(YYYYMMDD_HHMMSS)가 일치하는 음성(m4a/mp3)과 정형화 txt가 존재하면,
-      txt 파일명(전화번호/현장명 포함)을 기준으로 음성의 타겟 매핑 및 파일명을 1:1 동기화시킵니다.
+    (※ 백그라운드 탐색 시에는 파일명을 마음대로 자동 변경하지 않으며 매핑 및 완료 여부만 인지합니다)
     """
     if not input_folder or not Path(input_folder).is_dir():
         return []
@@ -112,7 +111,6 @@ def scan_folder(
     result_json_dir = output_path / "result_json"
     completed_audio_dir = output_path / "completed_audio"
 
-    # 기존 stt_texts 및 result_json 타임스탬프 색인 생성
     txt_ts_map = _build_txt_timestamp_map(stt_texts_dir)
     json_ts_map = _build_json_timestamp_map(result_json_dir)
 
@@ -128,18 +126,13 @@ def scan_folder(
     scanned_folders_count = 0
     detected_audio_count = 0
     detected_text_count = 0
-    renamed_json_count = 0
-    renamed_audio_count = 0
 
     ts_extractor = re.compile(r"(\d{8}_\d{6})")
 
-    # os.walk를 이용한 세분화된 하위 서브폴더 순회
     for root, dirs, files in os.walk(input_path):
-        # 결과 저장 전용 폴더(stt_texts, result_json 등)만 순회 대상에서 능동 제외
         dirs[:] = [d for d in dirs if d.lower() not in EXCLUDE_DIR_NAMES]
 
         root_path = Path(root).resolve()
-
         scanned_folders_count += 1
         rel_subfolder = root_path.relative_to(input_path)
         sub_desc = str(rel_subfolder) if str(rel_subfolder) != "." else "[상위 루트]"
@@ -169,7 +162,6 @@ def scan_folder(
             except OSError:
                 size = 0
 
-            # 스마트 파일명 파싱
             parsed = STTFilenameParser.parse(orig_file.name)
             target_txt_filename = parsed["new_filename"]
             stem = Path(target_txt_filename).stem
@@ -178,11 +170,6 @@ def scan_folder(
             target_txt_path = stt_texts_dir / target_txt_filename
             target_json_path = result_json_dir / target_json_filename
 
-            # ---------------------------------------------------------------
-            # 💡 [m4a ➔ txt 타임스탬프 동기화 로직]
-            # m4a 타임스탬프와 일치하는 정형화 txt 파일이 이미 존재하는 경우,
-            # txt 파일명(전화번호 포함)을 따라 m4a의 매핑 및 파일명을 1:1 동기화!
-            # ---------------------------------------------------------------
             ts_match = ts_extractor.search(orig_file.name)
             ts = ts_match.group(1) if ts_match else ""
 
@@ -193,23 +180,6 @@ def scan_folder(
                 target_json_filename = f"{stem}.json"
                 target_json_path = result_json_dir / target_json_filename
 
-                # 오디오 원본 파일명도 txt 기준(예: 20180503_105232_01052737050.m4a)으로 동기화 변경
-                expected_audio_name = f"{stem}{ext}"
-                if orig_file.name != expected_audio_name:
-                    new_audio_path = root_path / expected_audio_name
-                    if not new_audio_path.exists():
-                        try:
-                            orig_file.rename(new_audio_path)
-                            orig_file = new_audio_path
-                            renamed_audio_count += 1
-                            if progress_callback:
-                                progress_callback(
-                                    f"🔄 [음성 파일명 동기화] {orig_file.name} ➔ {expected_audio_name} ({renamed_audio_count}개 변경됨)",
-                                    "info"
-                                )
-                        except Exception:
-                            pass
-
             completed_audio_path = completed_audio_dir / orig_file.name
             is_stt_done = (
                 target_txt_path.exists()
@@ -218,29 +188,9 @@ def scan_folder(
                 or orig_file.parent == stt_texts_dir
             )
 
-            # ---------------------------------------------------------------
-            # 💡 [txt ➔ json 타임스탬프 동기화 로직]
-            # ---------------------------------------------------------------
             is_json_done = target_json_path.exists()
-
-            if not is_json_done and ts:
-                if ts in json_ts_map:
-                    old_json_file = json_ts_map[ts]
-                    if old_json_file.exists() and old_json_file != target_json_path:
-                        try:
-                            old_json_file.rename(target_json_path)
-                            is_json_done = True
-                            renamed_json_count += 1
-                            json_ts_map[ts] = target_json_path  # 맵 업데이트
-                            if progress_callback:
-                                progress_callback(
-                                    f"🔄 [JSON 파일명 동기화] {old_json_file.name} ➔ {target_json_path.name} ({renamed_json_count}개 변경됨)",
-                                    "info"
-                                )
-                        except Exception:
-                            is_json_done = True
-                    elif old_json_file.exists():
-                        is_json_done = True
+            if not is_json_done and ts and ts in json_ts_map:
+                is_json_done = True
 
             items.append(FileItem(
                 original_path=orig_file,
@@ -254,18 +204,11 @@ def scan_folder(
                 parsed_info=parsed
             ))
 
-        # 하위 서브폴더별 감지 현황 알림
         if progress_callback and (folder_audio_in_dir > 0 or folder_text_in_dir > 0 or scanned_folders_count <= 5):
             progress_callback(
                 f"  📂 서브폴더 탐색 중: {sub_desc} (음성: {folder_audio_in_dir}개, txt: {folder_text_in_dir}개 감지)",
                 "info"
             )
-
-    if (renamed_audio_count > 0 or renamed_json_count > 0) and progress_callback:
-        progress_callback(
-            f"🔄 [타임스탬프 1:1 동기화 실행] txt 기준 음성 파일 {renamed_audio_count}개 / JSON 파일 {renamed_json_count}개의 파일명을 1:1 동일하게 정형화 변경했습니다.",
-            "success"
-        )
 
     if progress_callback:
         progress_callback(
@@ -274,6 +217,92 @@ def scan_folder(
             "success" if items else "warning"
         )
 
-    # 파일명 기준 정렬
     items.sort(key=lambda x: x.original_path.name)
     return items
+
+
+def sync_filenames_by_timestamp(
+    input_folder: str,
+    output_folder: str = "",
+    progress_callback: Optional[Callable[[int, int, str], None]] = None
+) -> tuple[int, int]:
+    """
+    사용자가 '🛠️ 파일명 점검 및 수정' 버튼을 클릭했을 때 명시적으로 집행되는 정형화 동기화 함수입니다.
+    - txt 파일명 기준으로 동일 타임스탬프를 가진 음성(.m4a) 및 JSON(.json) 파일명을 1:1로 리네임 수정합니다.
+    - progress_callback: (done_count, total_targets, status_message) 수신
+    - Returns: (수정 완료된 총 파일 수, 검색된 전체 변경 대상 수)
+    """
+    if not input_folder or not Path(input_folder).is_dir():
+        return 0, 0
+
+    input_path = Path(input_folder).resolve()
+    output_path = Path(output_folder).resolve() if output_folder else (input_path / "result_output")
+
+    stt_texts_dir = output_path / "stt_texts"
+    result_json_dir = output_path / "result_json"
+
+    txt_ts_map = _build_txt_timestamp_map(stt_texts_dir)
+    json_ts_map = _build_json_timestamp_map(result_json_dir)
+
+    AUDIO_EXTS = {".m4a", ".mp3", ".wav", ".aac", ".flac"}
+    EXCLUDE_DIR_NAMES = {"stt_texts", "result_json", "completed_audio", "result_output"}
+    ts_extractor = re.compile(r"(\d{8}_\d{6})")
+
+    # 1. 변경 대상 작업 수집
+    rename_tasks: list[tuple[Path, Path]] = []  # (old_file_path, new_file_path)
+
+    for root, dirs, files in os.walk(input_path):
+        dirs[:] = [d for d in dirs if d.lower() not in EXCLUDE_DIR_NAMES]
+        root_path = Path(root).resolve()
+
+        for f in files:
+            orig_file = root_path / f
+            ext = orig_file.suffix.lower()
+
+            if ext not in AUDIO_EXTS:
+                continue
+
+            ts_match = ts_extractor.search(orig_file.name)
+            if ts_match:
+                ts = ts_match.group(1)
+                if ts in txt_ts_map:
+                    matched_txt = txt_ts_map[ts]
+                    expected_audio_name = f"{matched_txt.stem}{ext}"
+                    if orig_file.name != expected_audio_name:
+                        target_path = root_path / expected_audio_name
+                        if not target_path.exists():
+                            rename_tasks.append((orig_file, target_path))
+
+    # JSON 파일 변경 대상 수집
+    if result_json_dir.exists():
+        for json_file in result_json_dir.glob("*.json"):
+            ts_match = ts_extractor.search(json_file.name)
+            if ts_match:
+                ts = ts_match.group(1)
+                if ts in txt_ts_map:
+                    matched_txt = txt_ts_map[ts]
+                    expected_json_name = f"{matched_txt.stem}.json"
+                    if json_file.name != expected_json_name:
+                        target_json_path = result_json_dir / expected_json_name
+                        if not target_json_path.exists():
+                            rename_tasks.append((json_file, target_json_path))
+
+    total_targets = len(rename_tasks)
+    if total_targets == 0:
+        if progress_callback:
+            progress_callback(0, 0, "✅ 모든 음성/JSON 파일명이 txt 기준 100% 정형화 동기화되어 있습니다. 수정할 파일이 없습니다.")
+        return 0, 0
+
+    # 2. 프로그레스 콜백 연동 리네임 집행
+    completed_count = 0
+    for idx, (old_path, new_path) in enumerate(rename_tasks, start=1):
+        try:
+            old_path.rename(new_path)
+            completed_count += 1
+            if progress_callback:
+                progress_callback(idx, total_targets, f"🔄 [동기화 리네임 중] {old_path.name} ➔ {new_path.name}")
+        except Exception as e:
+            if progress_callback:
+                progress_callback(idx, total_targets, f"⚠️ 리네임 실패 ({old_path.name}): {e}")
+
+    return completed_count, total_targets
