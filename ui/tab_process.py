@@ -318,11 +318,34 @@ class ProcessWorker(QThread):
         if mode in ["all", "llm_only"] and not self._should_stop():
             txt_targets = []
             for item in self.items:
-                if item.file_type == "text" and not item.json_done and not item.skipped_small:
-                    txt_targets.append((item.original_path, item.target_json_path, item.size_bytes))
-                elif item.file_type == "audio" and item.stt_done and not item.json_done:
-                    txt_size = item.target_txt_path.stat().st_size if item.target_txt_path.exists() else 0
-                    txt_targets.append((item.target_txt_path, item.target_json_path, txt_size))
+                # 💡 [지능형 파싱실패 스킵 & 타 엔진 재작업 허용 로직]
+                prev_json = item.target_json_path
+                if not prev_json.exists():
+                    fail_json = prev_json.parent / f"{prev_json.stem}_파싱실패.json"
+                    if fail_json.exists():
+                        prev_json = fail_json
+
+                is_fail_tagged = "_파싱실패" in item.target_txt_path.stem or "_파싱실패" in item.original_path.stem or prev_json.name.endswith("_파싱실패.json")
+
+                if is_fail_tagged and prev_json.exists():
+                    try:
+                        prev_data = json.loads(prev_json.read_text(encoding="utf-8"))
+                        prev_status = prev_data.get("processing_status")
+                        prev_model = prev_data.get("model_used", "").split(" ")[0].strip()
+                        # 동일 모델로 이미 파싱 실패한 건이면 90초 무한낭비 방지를 위해 스킵! (타 모델 변경 시에는 재분석 시도 허용!)
+                        if prev_status == "parse_error" and prev_model == llm_model:
+                            skipped_cnt += 1
+                            continue
+                    except Exception:
+                        pass
+
+                if item.file_type == "text" and not item.skipped_small:
+                    if not item.json_done or is_fail_tagged:
+                        txt_targets.append((item.original_path, item.target_json_path, item.size_bytes))
+                elif item.file_type == "audio" and item.stt_done:
+                    if not item.json_done or is_fail_tagged:
+                        txt_size = item.target_txt_path.stat().st_size if item.target_txt_path.exists() else 0
+                        txt_targets.append((item.target_txt_path, item.target_json_path, txt_size))
 
             total_txt = len(txt_targets)
 
@@ -370,13 +393,50 @@ class ProcessWorker(QThread):
                         status = result["processing_status"]
 
                         if status == "success":
+                            # 성공 시 이전에 _파싱실패 태그가 달려있던 파일이라면 복원 정형화!
+                            if "_파싱실패" in txt_p.stem:
+                                clean_stem = txt_p.stem.replace("_파싱실패", "")
+                                new_txt_p = txt_p.parent / f"{clean_stem}.txt"
+                                new_json_p = json_p.parent / f"{clean_stem}.json"
+                                try:
+                                    if txt_p.exists() and not new_txt_p.exists():
+                                        txt_p.rename(new_txt_p)
+                                    if json_p.exists() and not new_json_p.exists():
+                                        json_p.rename(new_json_p)
+                                    # m4a도 연동 복원
+                                    audio_dir = txt_p.parent.parent / "completed_audio"
+                                    old_m4a = audio_dir / f"{txt_p.stem}.m4a"
+                                    new_m4a = audio_dir / f"{clean_stem}.m4a"
+                                    if old_m4a.exists() and not new_m4a.exists():
+                                        old_m4a.rename(new_m4a)
+                                except Exception:
+                                    pass
+
                             sym_count = len(result.get("증상") or result.get("symptoms") or [])
                             act_count = len(result.get("조치") or result.get("actions") or [])
                             self.log_signal.emit(f"   ✅ JSON 추출 완료 → 증상 {sym_count}건, 조치 {act_count}건 ({size_str}, {elapsed:.1f}초)", "success")
                             success_cnt += 1
                             self.file_done_signal.emit(txt_p.stem, "success", str(json_p), elapsed)
                         else:
-                            self.log_signal.emit(f"   ⚠ 파싱 실패 ({size_str}, {elapsed:.1f}초)", "warning")
+                            # 💡 파싱 실패 시 원본 txt 및 연관 m4a 파일명에 '_파싱실패' 태그 부여
+                            if "_파싱실패" not in txt_p.stem:
+                                fail_stem = f"{txt_p.stem}_파싱실패"
+                                fail_txt_p = txt_p.parent / f"{fail_stem}.txt"
+                                fail_json_p = json_p.parent / f"{fail_stem}.json"
+                                try:
+                                    if txt_p.exists() and not fail_txt_p.exists():
+                                        txt_p.rename(fail_txt_p)
+                                    if json_p.exists() and not fail_json_p.exists():
+                                        json_p.rename(fail_json_p)
+                                    audio_dir = txt_p.parent.parent / "completed_audio"
+                                    old_m4a = audio_dir / f"{txt_p.stem}.m4a"
+                                    fail_m4a = audio_dir / f"{fail_stem}.m4a"
+                                    if old_m4a.exists() and not fail_m4a.exists():
+                                        old_m4a.rename(fail_m4a)
+                                except Exception:
+                                    pass
+
+                            self.log_signal.emit(f"   ⚠ 파싱 실패 → '_파싱실패' 태그 부여 ({size_str}, {elapsed:.1f}초)", "warning")
                             error_cnt += 1
                             self.file_done_signal.emit(txt_p.stem, "error", str(json_p), elapsed)
 
