@@ -406,6 +406,7 @@ class ProcessTab(QWidget):
         self._worker: ProcessWorker | None = None
         self._all_items: list[FileItem] = []
         self._error_files: list[Path] = []
+        self._user_stopped: bool = False
 
         # 시간 성능 측정 관련 변수
         self._start_timestamp: float = 0.0
@@ -1035,6 +1036,7 @@ class ProcessTab(QWidget):
 
         self.progress_bar.setMaximum(len(self._all_items))
         self.progress_bar.setValue(0)
+        self._user_stopped = False
         self._reset_runtime_stats()
 
         self._start_timestamp = time.time()
@@ -1058,10 +1060,16 @@ class ProcessTab(QWidget):
         self._worker.start()
 
     def _stop_processing(self):
+        self._user_stopped = True
+        try:
+            subprocess.run(["shutdown", "/a"], capture_output=True, text=True)
+        except Exception:
+            pass
+
         if self._worker and self._worker.isRunning():
             self._worker.request_stop()
             self.stop_btn.setEnabled(False)
-            self.log_view.append_log("⏹ 중지 요청... 현재 작업 완료 후 중단됩니다.", "warning")
+            self.log_view.append_log("⏹ 사용자 요청 중지... 즉시 작업을 멈추고 PC 자동 종료를 차단합니다.", "warning")
 
     def _reset_runtime_stats(self):
         self.llm_stat_done.val_lbl.setText("0")
@@ -1168,14 +1176,25 @@ class ProcessTab(QWidget):
         if in_f:
             self._refresh_file_stats(in_f, out_f)
 
-        # 🏁 PC 자동 종료 옵션 가동 체크
+        # 🏁 PC 자동 종료 옵션 가동 체크 (사용자 중간 중지 시에는 절대 셧다운 금지!)
+        is_user_stopped = self._user_stopped or (self._worker and self._worker._should_stop())
         if self.chk_autoshutdown.isChecked():
-            self.log_view.append_log(
-                "🏁 [PC 자동 종료 요청] 모든 작업이 완료되어 60초 후 Windows 시스템이 자동 종료됩니다.\n"
-                "   - 종료를 취소하려면 명령 프롬프트(CMD)에서 'shutdown /a'를 입력하세요.",
-                "warning"
-            )
-            try:
-                subprocess.Popen(["shutdown", "/s", "/t", "60", "/c", "ConsultParser2 작업 완료로 60초 후 PC가 자동 종료됩니다."])
-            except Exception as e:
-                self.log_view.append_log(f"⚠ PC 자동 종료 명령 호출 예외: {e}", "error")
+            if is_user_stopped:
+                self.log_view.append_log(
+                    "⏹ [PC 자동 종료 차단] 사용자에 의해 작업이 중간 중지되었으므로 PC 자동 종료를 집행하지 않습니다.",
+                    "warning"
+                )
+                try:
+                    subprocess.run(["shutdown", "/a"], capture_output=True, text=True)
+                except Exception:
+                    pass
+            else:
+                self.log_view.append_log(
+                    "🏁 [PC 자동 종료 요청] 지정된 모든 작업 완수로 60초 후 Windows 시스템이 자동 종료됩니다.\n"
+                    "   - 종료를 취소하려면 [🛑 종료 예약 취소] 버튼을 클릭하세요.",
+                    "warning"
+                )
+                try:
+                    subprocess.Popen(["shutdown", "/s", "/t", "60", "/c", "ConsultParser2 작업 완료로 60초 후 PC가 자동 종료됩니다."])
+                except Exception as e:
+                    self.log_view.append_log(f"⚠ PC 자동 종료 명령 호출 예외: {e}", "error")
