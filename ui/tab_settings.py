@@ -36,6 +36,24 @@ class ModelFetchThread(QThread):
             self.error.emit(str(e))
 
 
+class GeminiModelFetchThread(QThread):
+    """백그라운드에서 구글 Generative Language API의 실시간 서비스 Gemini 모델 목록을 가져오는 스레드"""
+    finished = pyqtSignal(list)
+    error = pyqtSignal(str)
+
+    def __init__(self, api_key: str):
+        super().__init__()
+        self.api_key = api_key
+
+    def run(self):
+        try:
+            client = GeminiClient(self.api_key)
+            models = client.list_models()
+            self.finished.emit(models)
+        except Exception as e:
+            self.error.emit(str(e))
+
+
 class GeminiPingThread(QThread):
     """백그라운드에서 Gemini API 키 유효성을 테스트하는 스레드"""
     finished = pyqtSignal(bool, str)
@@ -61,6 +79,7 @@ class SettingsTab(QWidget):
         super().__init__(parent)
         self.config = load_config()
         self._fetch_thread: ModelFetchThread | None = None
+        self._gemini_fetch_thread: GeminiModelFetchThread | None = None
         self._ping_thread: GeminiPingThread | None = None
         self._build_ui()
         self._load_values()
@@ -213,7 +232,29 @@ class SettingsTab(QWidget):
         gemini_layout.addWidget(self.gemini_status_label)
         gemini_layout.addSpacing(12)
 
-        gemini_layout.addWidget(self._field_label("Gemini 모델 선택 (최신 Flash 라인업 / 직접 입력 가능)"))
+        gemini_model_header = QHBoxLayout()
+        gemini_model_header.addWidget(self._field_label("Gemini 모델 선택 (구글 실시간 서비스 모델 자동 동기화)"))
+        gemini_model_header.addStretch()
+
+        self.btn_fetch_gemini = QPushButton("✨ 최신 Gemini 모델 조회")
+        self.btn_fetch_gemini.setProperty("class", "secondary")
+        self.btn_fetch_gemini.setStyleSheet(f"""
+            QPushButton {{
+                color: {PALETTE['accent']};
+                border: 1px solid {PALETTE['accent']};
+                font-weight: 700;
+                font-size: 12px;
+                padding: 3px 10px;
+                border-radius: 4px;
+            }}
+            QPushButton:hover {{
+                background-color: {PALETTE['bg_tertiary']};
+            }}
+        """)
+        self.btn_fetch_gemini.clicked.connect(self._fetch_gemini_models)
+        gemini_model_header.addWidget(self.btn_fetch_gemini)
+        gemini_layout.addLayout(gemini_model_header)
+
         self.gemini_model_combo = QComboBox()
         self.gemini_model_combo.setEditable(True)  # 자유 모델명 직접 입력 허용!
         self.gemini_model_combo.addItems([
@@ -535,6 +576,34 @@ class SettingsTab(QWidget):
             self.model_combo.addItems(default_recommendations)
             self.model_combo.setCurrentIndex(0)
             self.model_status_label.setText("💡 추천 로컬 모델 목록 (새로고침 버튼으로 실제 Ollama 모델 동기화 가능)")
+
+    def _fetch_gemini_models(self):
+        key = self.gemini_key_edit.text().strip()
+        if not key:
+            QMessageBox.warning(self, "입력 오류", "Google Gemini API 키를 먼저 입력해주세요.")
+            return
+        self.btn_fetch_gemini.setEnabled(False)
+        self.gemini_status_label.setText("구글 서버에서 실시간 서비스 모델 목록을 조회하는 중...")
+        self._gemini_fetch_thread = GeminiModelFetchThread(key)
+        self._gemini_fetch_thread.finished.connect(self._on_gemini_models_loaded)
+        self._gemini_fetch_thread.error.connect(self._on_gemini_models_error)
+        self._gemini_fetch_thread.start()
+
+    def _on_gemini_models_loaded(self, models: list[str]):
+        self.btn_fetch_gemini.setEnabled(True)
+        if not models:
+            self.gemini_status_label.setText("⚠️ 조회된 실시간 서비스 모델이 없습니다. API 키를 확인하세요.")
+            return
+        curr = self.gemini_model_combo.currentText().split(" ")[0].strip()
+        self.gemini_model_combo.clear()
+        self.gemini_model_combo.addItems(models)
+        if curr in models:
+            self.gemini_model_combo.setCurrentText(curr)
+        self.gemini_status_label.setText(f"✅ 구글 실시간 서비스 제공 중인 {len(models)}개 Gemini 모델 동기화 완료")
+
+    def _on_gemini_models_error(self, err_msg: str):
+        self.btn_fetch_gemini.setEnabled(True)
+        self.gemini_status_label.setText(f"⚠ 구글 모델 조회 실패: {err_msg}")
 
     def _fetch_models(self):
         url = self.url_edit.text().strip() or "http://localhost:11434"

@@ -1,6 +1,7 @@
 # ConsultParser2 개발 임시 요구사항 및 완료 이력
 
-## 📌 현재 반영 완료된 요구사항 (v1.2.8.Build.1)
+## 📌 현재 반영 완료된 요구사항 (v1.2.9.Build.1)
+- [x] 구글 Gemini API 실시간 서비스 모델 자동 동기화 (`list_models()` 및 `✨ 최신 Gemini 모델 조회` 버튼)
 - [x] Google Gemini 3.7 Flash (`gemini-3.7-flash`), 2.5 Flash 최신 모델 라인업 전격 탑재 및 자유 직접 입력 Editable 드롭다운 지원
 - [x] 분석 시작 시 멈춤(Silent Freeze) 버그 완전 해결 (사전 검증 팝업 및 순수 모델명 파싱)
 - [x] 1단계 STT 미변환 잔량 0건 시 Whisper STTEngine 지연 로딩 최적화

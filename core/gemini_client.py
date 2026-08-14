@@ -64,6 +64,40 @@ class GeminiClient:
 
         return False, f"❌ 연결 실패: {last_err}"
 
+    def list_models(self) -> list[str]:
+        """
+        Google Generative Language REST API를 호출하여
+        현재 실시간으로 서비스 제공 중인 Gemini 모델 목록(generateContent 지원 모델)을 반환합니다.
+        """
+        clean_key = self._get_clean_key()
+        if not clean_key:
+            return []
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models"
+        headers = {"x-goog-api-key": clean_key}
+
+        try:
+            resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_models = data.get("models", [])
+                gemini_list = []
+                for m in raw_models:
+                    methods = m.get("supportedGenerationMethods", [])
+                    name = m.get("name", "").replace("models/", "").strip()
+                    # generateContent 지원 및 gemini- 로 시작하는 실시간 텍스트/분석 지원 모델 추출
+                    if "generateContent" in methods and name.startswith("gemini-"):
+                        # 구형 레거시 모델이나 단순 엠베딩(embedding) 모델 제외
+                        if not any(sub in name for sub in ["embedding", "bison", "gecko", "imagen"]):
+                            gemini_list.append(name)
+
+                # 최신 버전 우선 순 정렬 (3.7 > 3.5 > 3.1 > 2.5 > 2.0 > 1.5 등)
+                gemini_list.sort(reverse=True)
+                return gemini_list
+        except Exception:
+            pass
+        return []
+
     def ping(self) -> bool:
         ok, _ = self.test_connection()
         return ok
