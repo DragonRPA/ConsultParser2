@@ -13,6 +13,7 @@ from PyQt5.QtWidgets import (
     QLineEdit, QPushButton, QProgressBar, QFileDialog,
     QSizePolicy, QDialog, QListWidget, QListWidgetItem,
     QMessageBox, QRadioButton, QButtonGroup, QCheckBox,
+    QComboBox,
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QMutex, QMutexLocker, QTimer, QTime
 from PyQt5.QtGui import QCursor
