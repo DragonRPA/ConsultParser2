@@ -247,6 +247,21 @@ def scan_folder(
     return items
 
 
+def _get_unique_path(target_path: Path) -> Path:
+    """동일 경로에 이미 파일이 존재할 경우 파일명_1, 파일명_2로 고유 경로를 생성합니다."""
+    if not target_path.exists():
+        return target_path
+    parent = target_path.parent
+    stem = target_path.stem
+    ext = target_path.suffix
+    counter = 1
+    while True:
+        new_path = parent / f"{stem}_{counter}{ext}"
+        if not new_path.exists():
+            return new_path
+        counter += 1
+
+
 def sync_filenames_by_timestamp(
     input_folder: str,
     output_folder: str = "",
@@ -293,8 +308,8 @@ def sync_filenames_by_timestamp(
                 matched_txt = txt_ts_map[ts]
                 expected_audio_name = f"{matched_txt.stem}{ext}"
                 if orig_file.name != expected_audio_name:
-                    target_path = root_path / expected_audio_name
-                    if not target_path.exists():
+                    target_path = _get_unique_path(root_path / expected_audio_name)
+                    if orig_file != target_path:
                         rename_tasks.append((orig_file, target_path))
 
     # 1-B. completed_audio 출력 보관 폴더 내 음성 파일 전수 수집 및 동기화
@@ -308,8 +323,8 @@ def sync_filenames_by_timestamp(
                     matched_txt = txt_ts_map[ts]
                     expected_audio_name = f"{matched_txt.stem}{ext}"
                     if audio_file.name != expected_audio_name:
-                        target_path = completed_audio_dir / expected_audio_name
-                        if not target_path.exists():
+                        target_path = _get_unique_path(completed_audio_dir / expected_audio_name)
+                        if audio_file != target_path:
                             rename_tasks.append((audio_file, target_path))
 
     # 1-C. JSON 파일 변경 대상 수집
@@ -320,8 +335,8 @@ def sync_filenames_by_timestamp(
                 matched_txt = txt_ts_map[ts]
                 expected_json_name = f"{matched_txt.stem}.json"
                 if json_file.name != expected_json_name:
-                    target_json_path = result_json_dir / expected_json_name
-                    if not target_json_path.exists():
+                    target_json_path = _get_unique_path(result_json_dir / expected_json_name)
+                    if json_file != target_json_path:
                         rename_tasks.append((json_file, target_json_path))
 
     total_targets = len(rename_tasks)
