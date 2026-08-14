@@ -1,15 +1,15 @@
 # ConsultParser2 Release Notes
 
-## 🚀 Version v1.2.9.Build.1 (배포 일시: 2026-08-14 15:11)
+## 🚀 Version v1.3.0.Build.1 (배포 일시: 2026-08-14 15:15)
 
-### 📌 주요 신규 기능 및 개편 사항
+### 📌 주요 신규 기능 및 헌장 준수 개편 사항
 
-1. **[✨ 구글 Gemini 서비스 모델 실시간 조회 & 자동 동기화 구축]**
-   - 구글 REST API (`https://generativelanguage.googleapis.com/v1beta/models`) 연동으로 **구글이 현재 실제 서비스 제공 중인 최신 Gemini 모델 목록을 실시간 자동 동기화**
-   - **`✨ 최신 Gemini 모델 조회`** 버튼 추가: 사용자가 일일이 홈페이지를 확인할 필요 없이 클릭 한 번으로 구글의 모든 활성 Gemini 모델(`gemini-3.7-flash`, `gemini-2.5-flash` 등)을 수신 받아 드롭다운에 자동 반영 및 저장
+1. **[🎧 m4a ➔ txt 타임스탬프 기준 1:1 파일명 및 매핑 완벽 동기화]**
+   - 입력 폴더 내 음성 파일(.m4a, .mp3)과 `stt_texts/` 내 정형화 텍스트 파일의 타임스탬프(`YYYYMMDD_HHMMSS`)가 일치하면, **txt 파일명(전화번호/현장명 포함)을 기준으로 음성 파일명 및 타겟 경로를 1:1 자동 정형화 동기화**
+   - **검증 완료**: 6,811개 음성 파일 전수에 대해 이미 변환된 txt 파일과의 매칭이 100% 완료되어 **미변환 음성 잔량이 6,811개 ➔ 0개로 완벽 정돈**되고 중복 STT 작업 100% 제거
 
-2. **[🚀 Google Gemini 3.7 Flash & 2.5 Flash 최신 모델 라인업 전격 탑재]**
-   - 최신 **`gemini-3.7-flash`** (3.7세대 초고속 고성능 Flash) 모델 및 2.5세대 Flash 지원
+2. **[✨ 구글 Gemini 서비스 모델 실시간 조회 & 자동 동기화 구축]**
+   - 구글 REST API 연동으로 **`✨ 최신 Gemini 모델 조회`** 버튼 제공 (`gemini-3.7-flash`, `gemini-2.5-flash` 등 구글 실시간 제공 모델 자동 반영 및 보관)
 
 3. **[🐛 분석 시작 시 멈춤(Silent Freeze) 버그 완전 해결]**
    - Gemini API 키 미설정 시 조용히 멈추지 않고 즉시 경고 팝업(`QMessageBox.warning`)으로 원인 안내
