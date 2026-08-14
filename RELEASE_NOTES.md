@@ -1,38 +1,29 @@
 # ConsultParser2 Release Notes
 
-## 🚀 Version v1.2.2.Build.1 (배포 일시: 2026-08-14 09:51)
+## 🚀 Version v1.2.3.Build.1 (배포 일시: 2026-08-14 10:08)
 
 ### 📌 주요 신규 기능 및 헌장 준수 개편 사항
 
-1. **[🛑 사용자 중간 중지 시 PC 자동 종료 100% 차단 로직 추가]**
+1. **[💡 타임스탬프 동기화: txt 파일명을 따라 JSON 파일명 1:1 자동 변경 임시 로직]**
+   - `stt_texts/` 또는 입력 폴더 내 `.txt` 파일과 `result_json/` 내 기존 `.json` 파일의 타임스탬프(`YYYYMMDD_HHMMSS`)가 동일하면, **txt 파일명을 따라 JSON 파일명을 1:1 자동 변경(Rename)**하여 동기화
+   - 이로써 이미 분석이 완료된 4,108개의 JSON 파일이 즉시 100% "분석 완료"로 정상 인지되어, 중복 분석 없이 미분석 잔량이 2,168건으로 완벽히 정상화됨 (오류 해결 시점 후 제거 가능하도록 독립 구현)
+
+2. **[🛑 사용자 중간 중지 시 PC 자동 종료 100% 차단 로직]**
    - 사용자가 "■ 중지" 버튼을 누르거나 작업을 중간에 취소한 경우, `🏁 작업 완료 시 PC 자동 종료` 체크박스가 활성화되어 있어도 **PC 셧다운을 100% 무조건 차단**
    - 중지 즉시 `shutdown /a` 자동 안전망을 가동하여 예기치 않은 시스템 종료 방지
 
-2. **[🛑 PC 자동 종료 즉시 취소 버튼 (shutdown /a) 신설]**
+3. **[🛑 PC 자동 종료 즉시 취소 버튼 (shutdown /a) 신설]**
    - 60초 PC 셧다운 예약 타이머 동작 중 언제든지 클릭 시 즉시 `shutdown /a`를 실행하여 자동 종료를 무력화하는 전용 버튼 장착
 
-3. **[1단계 + 2단계 프로세스 원스톱 & 파이프라인 분리]**
+4. **[1단계 + 2단계 프로세스 원스톱 & 파이프라인 분리]**
    - 1단계: `.m4a` / `.mp3` 음성 ➔ OpenAI Whisper 기반 정형화 `.txt` 변환 및 원본 음성 `completed_audio/` 보관
    - 2단계: `.txt` 대화록 ➔ 선택된 LLM 기반 구조화 `.json` 파싱
    - 작업 모드 선택 라벨 간결화 (`🟢 1+2단계`, `🔵 1단계만`, `🟣 2단계만`)로 UI 글자 잘림 완벽 해결
 
-4. **[2줄 독립 분리형 통계 카드 패널]**
+5. **[2줄 독립 분리형 통계 카드 패널]**
    - 1줄: `🎧 [1단계 STT >> txt]` 대상/잔량/완료/스킵/오류 독립 집계
    - 2줄: `🤖 [2단계 txt >> Json]` 대상/잔량/완료/스킵/오류 독립 집계
 
-5. **[현재 작업 중인 파일 용량(MB/KB) 실시간 표출]**
-   - 대용량 음성/텍스트 파일 처리 시 로그 및 상태창에 `(14.8 MB)`, `(42.5 KB)` 등 용량을 표시하여 대기 시간 예측 편익 제공
-
-6. **[3단계: 미검출 건(증상0/조치0) 원문 2차 재분석]**
-   - 1단계 오디오 STT 재실행 없이 `stt_texts/*.txt` 원문만 직행 읽기
-   - 타 고성능 분석 엔진 지정 재분석 및 통화 성격 분류 라벨(`call_type`: `REPAIR`, `INQUIRY`, `IRRELEVANT`) 갱신
-
-7. **[4단계: 전사 100% JSON 스키마 마이그레이션 & Supabase DB 전처리 수출]**
-   - 과거/신규 JSON 100% `"call_type": "REPAIR"` 보완 백필 마이그레이션 (`run_schema_migration`)
-   - `merged_consults.json`: 전사 100% 병합 단일 통합 JSON
-   - `supabase_export.json`: Supabase Table Editor Bulk Import 전용 File
-   - `supabase_seed.sql`: Supabase SQL Editor 실행용 멱등성 `INSERT` 쿼리문 (`consult_records` + `consult_items` 2대 관계형 테이블)
-
-8. **[Google Gemma 3 지원 & Gemini 대시보드 링킹]**
-   - Ollama `gemma3:12b`, `gemma3:4b`, `gemma3:27b` 표준 추천 모델 탑재
-   - Gemini 사용량 대시보드 및 쿼터/결제 관리 direct link 버튼 연결
+6. **[3단계 & 4단계 후속 파이프라인]**
+   - 3단계: 미검출 건(증상0/조치0) stt_texts/ 원문 2차 재분석 및 `call_type` 분류 갱신
+   - 4단계: 전사 100% JSON 스키마 백필 마이그레이션 & Supabase DB 전처리 수출 (`merged_consults.json`, `supabase_export.json`, `supabase_seed.sql`)
