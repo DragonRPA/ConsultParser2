@@ -1,6 +1,7 @@
 # ConsultParser2 개발 임시 요구사항 및 완료 이력
 
-## 📌 현재 반영 완료된 요구사항 (v1.3.1.Build.1)
+## 📌 현재 반영 완료된 요구사항 (v1.3.2.Build.1)
+- [x] 파일명 1:1 동기화 리네임 실시간 진행률 1건 단위 표출 (renamed_audio_count / renamed_json_count 실시간 카운터 리포팅)
 - [x] 실시간 작업 진행 상태 모니터링 시스템 구축 (api_status_label 및 processEvents 촘촘히 전격 배치)
 - [x] m4a ➔ txt 타임스탬프 기준 1:1 파일명 및 매핑 동기화 (미변환 음성 잔량 6811개 ➔ 0개 완벽 정돈)
 - [x] 구글 Gemini API 실시간 서비스 모델 자동 동기화 (`list_models()` 및 `✨ 최신 Gemini 모델 조회` 버튼)

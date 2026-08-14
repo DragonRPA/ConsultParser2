@@ -202,6 +202,11 @@ def scan_folder(
                             orig_file.rename(new_audio_path)
                             orig_file = new_audio_path
                             renamed_audio_count += 1
+                            if progress_callback:
+                                progress_callback(
+                                    f"🔄 [음성 파일명 동기화] {orig_file.name} ➔ {expected_audio_name} ({renamed_audio_count}개 변경됨)",
+                                    "info"
+                                )
                         except Exception:
                             pass
 
@@ -227,6 +232,11 @@ def scan_folder(
                             is_json_done = True
                             renamed_json_count += 1
                             json_ts_map[ts] = target_json_path  # 맵 업데이트
+                            if progress_callback:
+                                progress_callback(
+                                    f"🔄 [JSON 파일명 동기화] {old_json_file.name} ➔ {target_json_path.name} ({renamed_json_count}개 변경됨)",
+                                    "info"
+                                )
                         except Exception:
                             is_json_done = True
                     elif old_json_file.exists():
