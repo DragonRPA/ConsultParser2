@@ -61,6 +61,20 @@ def norm_ts(raw_ts: str) -> str:
     return raw_ts
 
 
+# 💡 전화번호 숫자(예: 0222914256_190430)가 타임스탬프로 오인되지 않도록 YYYYMMDD_HHMMSS / YYMMDD_HHMMSS 날짜/시간 정밀 추출 정규식
+PRECISE_TS_PATTERN = re.compile(
+    r"(?:^|[_\s-])((?:20\d{2}|\d{2})(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])_\d{6})(?:[_\s.-]|$)"
+)
+
+
+def extract_timestamp_from_filename(filename: str) -> str:
+    """파일명에서 진짜 YYYYMMDD_HHMMSS 또는 YYMMDD_HHMMSS 타임스탬프만을 정밀 추출하여 호환 정규화합니다."""
+    matches = PRECISE_TS_PATTERN.findall(filename)
+    if matches:
+        return norm_ts(matches[-1])  # 보통 파일명 뒷부분에 시분초 타임스탬프가 위치함
+    return ""
+
+
 def _build_json_timestamp_map(result_json_dir: Path) -> dict[str, Path]:
     """
     result_json/ 폴더 내에 기존 저장된 JSON 파일들의 타임스탬프(YYYYMMDD_HHMMSS) 색인을 생성합니다.
@@ -69,14 +83,10 @@ def _build_json_timestamp_map(result_json_dir: Path) -> dict[str, Path]:
     if not result_json_dir.exists():
         return ts_map
 
-    ts_pattern = re.compile(r"(\d{8}_\d{6}|\d{6}_\d{6})")
-
     for json_file in result_json_dir.glob("*.json"):
-        match = ts_pattern.search(json_file.name)
-        if match:
-            ts = norm_ts(match.group(1))
-            if ts not in ts_map:
-                ts_map[ts] = json_file
+        ts = extract_timestamp_from_filename(json_file.name)
+        if ts and ts not in ts_map:
+            ts_map[ts] = json_file
     return ts_map
 
 
@@ -88,14 +98,10 @@ def _build_txt_timestamp_map(stt_texts_dir: Path) -> dict[str, Path]:
     if not stt_texts_dir.exists():
         return ts_map
 
-    ts_pattern = re.compile(r"(\d{8}_\d{6}|\d{6}_\d{6})")
-
     for txt_file in stt_texts_dir.glob("*.txt"):
-        match = ts_pattern.search(txt_file.name)
-        if match:
-            ts = norm_ts(match.group(1))
-            if ts not in ts_map:
-                ts_map[ts] = txt_file
+        ts = extract_timestamp_from_filename(txt_file.name)
+        if ts and ts not in ts_map:
+            ts_map[ts] = txt_file
     return ts_map
 
 
@@ -140,8 +146,6 @@ def scan_folder(
     detected_audio_count = 0
     detected_text_count = 0
 
-    ts_extractor = re.compile(r"(\d{8}_\d{6}|\d{6}_\d{6})")
-
     for root, dirs, files in os.walk(input_path):
         dirs[:] = [d for d in dirs if d.lower() not in EXCLUDE_DIR_NAMES]
 
@@ -183,8 +187,7 @@ def scan_folder(
             target_txt_path = stt_texts_dir / target_txt_filename
             target_json_path = result_json_dir / target_json_filename
 
-            ts_match = ts_extractor.search(orig_file.name)
-            ts = norm_ts(ts_match.group(1)) if ts_match else ""
+            ts = extract_timestamp_from_filename(orig_file.name)
 
             if is_audio and ts and ts in txt_ts_map:
                 matched_txt = txt_ts_map[ts]
@@ -259,7 +262,6 @@ def sync_filenames_by_timestamp(
 
     AUDIO_EXTS = {".m4a", ".mp3", ".wav", ".aac", ".flac"}
     EXCLUDE_DIR_NAMES = {"stt_texts", "result_json", "result_output"}
-    ts_extractor = re.compile(r"(\d{8}_\d{6}|\d{6}_\d{6})")
 
     # 1. 변경 대상 작업 수집
     rename_tasks: list[tuple[Path, Path]] = []  # (old_file_path, new_file_path)
@@ -276,16 +278,14 @@ def sync_filenames_by_timestamp(
             if ext not in AUDIO_EXTS:
                 continue
 
-            ts_match = ts_extractor.search(orig_file.name)
-            if ts_match:
-                ts = norm_ts(ts_match.group(1))
-                if ts in txt_ts_map:
-                    matched_txt = txt_ts_map[ts]
-                    expected_audio_name = f"{matched_txt.stem}{ext}"
-                    if orig_file.name != expected_audio_name:
-                        target_path = root_path / expected_audio_name
-                        if not target_path.exists():
-                            rename_tasks.append((orig_file, target_path))
+            ts = extract_timestamp_from_filename(orig_file.name)
+            if ts and ts in txt_ts_map:
+                matched_txt = txt_ts_map[ts]
+                expected_audio_name = f"{matched_txt.stem}{ext}"
+                if orig_file.name != expected_audio_name:
+                    target_path = root_path / expected_audio_name
+                    if not target_path.exists():
+                        rename_tasks.append((orig_file, target_path))
 
     # 1-B. completed_audio 출력 보관 폴더 내 음성 파일 전수 수집 및 동기화
     completed_audio_dir = output_path / "completed_audio"
@@ -293,30 +293,26 @@ def sync_filenames_by_timestamp(
         for audio_file in completed_audio_dir.glob("*.*"):
             ext = audio_file.suffix.lower()
             if ext in AUDIO_EXTS:
-                ts_match = ts_extractor.search(audio_file.name)
-                if ts_match:
-                    ts = norm_ts(ts_match.group(1))
-                    if ts in txt_ts_map:
-                        matched_txt = txt_ts_map[ts]
-                        expected_audio_name = f"{matched_txt.stem}{ext}"
-                        if audio_file.name != expected_audio_name:
-                            target_path = completed_audio_dir / expected_audio_name
-                            if not target_path.exists():
-                                rename_tasks.append((audio_file, target_path))
+                ts = extract_timestamp_from_filename(audio_file.name)
+                if ts and ts in txt_ts_map:
+                    matched_txt = txt_ts_map[ts]
+                    expected_audio_name = f"{matched_txt.stem}{ext}"
+                    if audio_file.name != expected_audio_name:
+                        target_path = completed_audio_dir / expected_audio_name
+                        if not target_path.exists():
+                            rename_tasks.append((audio_file, target_path))
 
     # 1-C. JSON 파일 변경 대상 수집
     if result_json_dir.exists():
         for json_file in result_json_dir.glob("*.json"):
-            ts_match = ts_extractor.search(json_file.name)
-            if ts_match:
-                ts = norm_ts(ts_match.group(1))
-                if ts in txt_ts_map:
-                    matched_txt = txt_ts_map[ts]
-                    expected_json_name = f"{matched_txt.stem}.json"
-                    if json_file.name != expected_json_name:
-                        target_json_path = result_json_dir / expected_json_name
-                        if not target_json_path.exists():
-                            rename_tasks.append((json_file, target_json_path))
+            ts = extract_timestamp_from_filename(json_file.name)
+            if ts and ts in txt_ts_map:
+                matched_txt = txt_ts_map[ts]
+                expected_json_name = f"{matched_txt.stem}.json"
+                if json_file.name != expected_json_name:
+                    target_json_path = result_json_dir / expected_json_name
+                    if not target_json_path.exists():
+                        rename_tasks.append((json_file, target_json_path))
 
     total_targets = len(rename_tasks)
     if total_targets == 0:
