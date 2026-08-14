@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import (
     QLineEdit, QPushButton, QProgressBar, QFileDialog,
     QSizePolicy, QDialog, QListWidget, QListWidgetItem,
     QMessageBox, QRadioButton, QButtonGroup, QCheckBox,
-    QComboBox,
+    QComboBox, QTextEdit,
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QMutex, QMutexLocker, QTimer, QTime
 from PyQt5.QtGui import QCursor
@@ -130,6 +130,133 @@ class ErrorSelectDialog(QDialog):
 
 
 # ─────────────────────────────────────────────────────────────────
+# 대화록 미리보기 & 1초 수동 스킵 팝업 다이얼로그
+# ─────────────────────────────────────────────────────────────────
+class TextPreviewSkipDialog(QDialog):
+    def __init__(self, filename: str, content: str, size_str: str, timeout_sec: int = 5, parent=None):
+        super().__init__(parent)
+        self.filename = filename
+        self.content = content
+        self.size_str = size_str
+        self.remaining_sec = timeout_sec
+        self.result_action = "analyze"  # 기본값: LLM 자동 분석
+        self.setWindowTitle(f"👁️ 대화록 미리보기 & 1초 수동 스킵 - {filename}")
+        self.resize(680, 500)
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {PALETTE['bg_primary']};
+                color: {PALETTE['text_primary']};
+            }}
+            QTextEdit {{
+                background-color: {PALETTE['bg_tertiary']};
+                color: {PALETTE['text_primary']};
+                border: 1px solid {PALETTE['border']};
+                border-radius: 6px;
+                font-family: 'Consolas', 'Malgun Gothic', monospace;
+                font-size: 13px;
+                padding: 10px;
+            }}
+        """)
+        self._timer = QTimer(self)
+        self._timer.setInterval(1000)
+        self._timer.timeout.connect(self._on_timer_tick)
+        self._build_ui()
+        self._timer.start()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(12)
+
+        header_row = QHBoxLayout()
+        title_lbl = QLabel(f"📄 <b>{self.filename}</b> ({self.size_str})")
+        title_lbl.setStyleSheet(f"color: {PALETTE['accent']}; font-size: 14px;")
+        header_row.addWidget(title_lbl)
+        header_row.addStretch()
+        layout.addLayout(header_row)
+
+        self.text_view = QTextEdit()
+        self.text_view.setReadOnly(True)
+        self.text_view.setPlainText(self.content)
+        layout.addWidget(self.text_view)
+
+        stripped = self.content.strip()
+        if len(stripped) < 15 or "연결되지 않았습니다" in stripped or "통화연결음" in stripped:
+            warn_lbl = QLabel("⚠️ [자동 감지] 대화록 내용이 너무 짧거나 파싱 불가능한 연결음 문구로 추정됩니다! [🚫 파싱 불가/스킵] 추천!")
+            warn_lbl.setStyleSheet("color: #F59E0B; font-weight: 700; font-size: 12px; margin-top: 2px;")
+            layout.addWidget(warn_lbl)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(10)
+
+        self.btn_skip = QPushButton("🚫 파싱 불가 / 스킵 (0초 스킵)")
+        self.btn_skip.setStyleSheet("""
+            QPushButton {
+                background-color: #EF4444;
+                color: white;
+                font-weight: 700;
+                font-size: 13px;
+                padding: 10px 18px;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #DC2626;
+            }
+        """)
+        self.btn_skip.clicked.connect(self._on_skip)
+
+        self.btn_analyze = QPushButton(f"▶️ LLM 분석 진행 ({self.remaining_sec}초 후 자동)")
+        self.btn_analyze.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {PALETTE['accent']};
+                color: white;
+                font-weight: 700;
+                font-size: 13px;
+                padding: 10px 18px;
+                border-radius: 6px;
+            }}
+            QPushButton:hover {{
+                background-color: #2563EB;
+            }}
+        """)
+        self.btn_analyze.clicked.connect(self._on_analyze)
+
+        self.btn_stop = QPushButton("⏹ 전체 중지")
+        self.btn_stop.setProperty("class", "secondary")
+        self.btn_stop.clicked.connect(self._on_stop)
+
+        btn_row.addWidget(self.btn_skip)
+        btn_row.addWidget(self.btn_analyze)
+        btn_row.addStretch()
+        btn_row.addWidget(self.btn_stop)
+        layout.addLayout(btn_row)
+
+    def _on_timer_tick(self):
+        self.remaining_sec -= 1
+        if self.remaining_sec > 0:
+            self.btn_analyze.setText(f"▶️ LLM 분석 진행 ({self.remaining_sec}초 후 자동)")
+        else:
+            self._timer.stop()
+            self.result_action = "analyze"
+            self.accept()
+
+    def _on_skip(self):
+        self._timer.stop()
+        self.result_action = "skip"
+        self.accept()
+
+    def _on_analyze(self):
+        self._timer.stop()
+        self.result_action = "analyze"
+        self.accept()
+
+    def _on_stop(self):
+        self._timer.stop()
+        self.result_action = "stop"
+        self.reject()
+
+
+# ─────────────────────────────────────────────────────────────────
 # 클릭 가능한 통계 카드 위젯
 # ─────────────────────────────────────────────────────────────────
 class ClickableCard(QWidget):
@@ -183,13 +310,15 @@ class ProcessWorker(QThread):
     progress_signal  = pyqtSignal(int, int, str)                 # (done_count, total_count, stage_prefix)
     file_done_signal = pyqtSignal(str, str, str, float)         # (file_stem, status, json_path, elapsed_sec)
     finished_signal  = pyqtSignal(int, int, int, float, float) # (success, error, skipped, total_elapsed_sec, avg_sec)
+    preview_signal   = pyqtSignal(str, str, str, list)         # (txt_filename, content, size_str, res_holder)
 
-    def __init__(self, items: list[FileItem], config: dict, process_mode: str = "all", sort_order: str = "size_asc"):
+    def __init__(self, items: list[FileItem], config: dict, process_mode: str = "all", sort_order: str = "size_asc", enable_preview_skip: bool = False):
         super().__init__()
         self.items = items
         self.config = config
         self.process_mode = process_mode  # "all", "stt_only", "llm_only"
         self.sort_order = sort_order      # "size_asc", "timestamp_asc"
+        self.enable_preview_skip = enable_preview_skip  # 대화록 미리보기 & 수동 스킵 팝업 활성화 여부
         self._stop_requested = False
         self._mutex = QMutex()
 
@@ -395,6 +524,31 @@ class ProcessWorker(QThread):
                             skipped_cnt += 1
                             self.file_done_signal.emit(txt_p.stem, "skip", str(json_p), 0.0)
                             continue
+
+                        # 💡 [신규] 대화록 실시간 미리보기 & 1초 수동 스킵 팝업 분기
+                        if self.enable_preview_skip:
+                            res_holder = []
+                            self.preview_signal.emit(name, content, size_str, res_holder)
+                            user_act = res_holder[0] if res_holder else "analyze"
+
+                            if user_act == "stop":
+                                self.log_signal.emit("⏹ 사용자 요청으로 중지되었습니다.", "warning")
+                                break
+                            elif user_act == "skip":
+                                self.log_signal.emit(f"   🚫 사용자 판별 파싱 불가 ➔ 0초 수동 스킵 완료 ({size_str})", "warning")
+                                skip_result = {
+                                    "audio_filename": txt_p.stem,
+                                    "processing_status": "skipped_user",
+                                    "model_used": llm_model,
+                                    "customer_name": "미지정",
+                                    "symptoms": [],
+                                    "actions": []
+                                }
+                                json_p.parent.mkdir(parents=True, exist_ok=True)
+                                json_p.write_text(json.dumps(skip_result, ensure_ascii=False, indent=2), encoding="utf-8")
+                                skipped_cnt += 1
+                                self.file_done_signal.emit(txt_p.stem, "skip", str(json_p), 0.0)
+                                continue
 
                         def _status_cb(msg: str, color: str):
                             self.status_signal.emit(f"{msg} ({size_str})", color)
@@ -614,6 +768,22 @@ class ProcessTab(QWidget):
 
         mode_box.addWidget(sort_lbl)
         mode_box.addWidget(self.combo_sort_order)
+
+        # 👁️ 대화록 실시간 미리보기 & 1초 수동 스킵 팝업 옵션 체크박스
+        self.chk_preview_skip = QCheckBox("👁️ 2단계 대화록 실시간 미리보기 & 1초 수동 스킵 (5초 카운트다운)")
+        self.chk_preview_skip.setStyleSheet("""
+            QCheckBox {
+                color: #10B981;
+                font-weight: 700;
+                font-size: 12px;
+                margin-left: 14px;
+                white-space: nowrap;
+            }
+        """)
+        saved_preview = self.config.get("enable_preview_skip", False)
+        self.chk_preview_skip.setChecked(saved_preview)
+        mode_box.addWidget(self.chk_preview_skip)
+
         mode_box.addStretch()
 
         root.addLayout(mode_box)
@@ -1252,10 +1422,12 @@ class ProcessTab(QWidget):
             live_cfg = self.settings_tab.get_current_config()
             cfg.update(live_cfg)
         sort_order = self.combo_sort_order.currentData() or "size_asc"
+        enable_preview_skip = self.chk_preview_skip.isChecked()
         cfg["last_input_folder"] = input_folder
         cfg["last_output_folder"] = output_folder
         cfg["process_mode"] = mode
         cfg["sort_order"] = sort_order
+        cfg["enable_preview_skip"] = enable_preview_skip
         save_config(cfg)
 
         # 💡 [사전 검증 1]: 2단계 수행 모드 시 분석 엔진 접속 유효성 사전 검사
@@ -1312,12 +1484,18 @@ class ProcessTab(QWidget):
         self.output_browse_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
 
-        self._worker = ProcessWorker(self._all_items, cfg, process_mode=mode, sort_order=sort_order)
+        self._worker = ProcessWorker(
+            self._all_items, cfg,
+            process_mode=mode,
+            sort_order=sort_order,
+            enable_preview_skip=enable_preview_skip
+        )
         self._worker.log_signal.connect(self._on_log)
         self._worker.status_signal.connect(self._on_status_changed)
         self._worker.progress_signal.connect(self._on_progress)
         self._worker.file_done_signal.connect(self._on_file_done)
         self._worker.finished_signal.connect(self._on_finished)
+        self._worker.preview_signal.connect(self._on_preview_request, Qt.BlockingQueuedConnection)
         self._worker.start()
 
     def _stop_processing(self):
@@ -1459,3 +1637,9 @@ class ProcessTab(QWidget):
                     subprocess.Popen(["shutdown", "/s", "/t", "60", "/c", "ConsultParser2 작업 완료로 60초 후 PC가 자동 종료됩니다."])
                 except Exception as e:
                     self.log_view.append_log(f"⚠ PC 자동 종료 명령 호출 예외: {e}", "error")
+
+    def _on_preview_request(self, filename: str, content: str, size_str: str, res_holder: list):
+        """2단계 LLM 분석 직전 대화록 미리보기 & 1초 수동 스킵 모달 조치"""
+        dialog = TextPreviewSkipDialog(filename, content, size_str, timeout_sec=5, parent=self)
+        dialog.exec_()
+        res_holder.append(dialog.result_action)
