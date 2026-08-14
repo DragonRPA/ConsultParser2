@@ -649,7 +649,7 @@ class ProcessTab(QWidget):
         btn_row.addWidget(self.lbl_elapsed_time)
         btn_row.addWidget(self.lbl_avg_time)
 
-        # 🏁 PC 자동 종료 체크박스
+        # 🏁 PC 자동 종료 체크박스 & 🛑 즉시 취소 (shutdown /a) 버튼
         self.chk_autoshutdown = QCheckBox("🏁 작업 완료 시 PC 자동 종료 (60초 안내후 셧다운)")
         self.chk_autoshutdown.setStyleSheet(f"""
             QCheckBox {{
@@ -661,6 +661,26 @@ class ProcessTab(QWidget):
             }}
         """)
         btn_row.addWidget(self.chk_autoshutdown)
+
+        self.btn_cancel_shutdown = QPushButton("🛑 종료 예약 취소 (shutdown /a)")
+        self.btn_cancel_shutdown.setProperty("class", "secondary")
+        self.btn_cancel_shutdown.setStyleSheet(f"""
+            QPushButton {{
+                color: #EF4444;
+                border: 1px solid #EF4444;
+                font-weight: 700;
+                font-size: 12px;
+                padding: 4px 10px;
+                border-radius: 4px;
+                white-space: nowrap;
+            }}
+            QPushButton:hover {{
+                background-color: #FEF2F2;
+                color: #DC2626;
+            }}
+        """)
+        self.btn_cancel_shutdown.clicked.connect(self._cancel_pc_shutdown)
+        btn_row.addWidget(self.btn_cancel_shutdown)
 
         btn_row.addStretch()
         root.addLayout(btn_row)
@@ -842,6 +862,24 @@ class ProcessTab(QWidget):
         if reply == QMessageBox.StandardButton.Yes:
             if export_out_dir.exists():
                 os.startfile(str(export_out_dir))
+
+    def _cancel_pc_shutdown(self):
+        """Windows 시스템 셧다운 예약을 즉시 무력화 (shutdown /a)"""
+        try:
+            res = subprocess.run(["shutdown", "/a"], capture_output=True, text=True)
+            if res.returncode == 0:
+                self.log_view.append_log(
+                    "✅ [PC 종료 예약 취소 완료] 'shutdown /a' 명령이 성공적으로 실행되어 시스템 종료 예약이 무력화되었습니다.",
+                    "success"
+                )
+                QMessageBox.information(self, "종료 취소 완료", "✅ PC 자동 종료 예약(60초 셧다운)이 성공적으로 취소되었습니다!")
+            else:
+                err_msg = res.stderr.strip() or "예약된 종료 명령이 없거나 이미 취소되었습니다."
+                self.log_view.append_log(f"ℹ️ [PC 종료 취소 안내] {err_msg}", "info")
+                QMessageBox.information(self, "종료 취소 안내", f"ℹ️ {err_msg}")
+        except Exception as e:
+            self.log_view.append_log(f"❌ PC 종료 취소 실행 오류: {e}", "error")
+            QMessageBox.warning(self, "실행 오류", f"종료 취소 실행 중 예외 발생:\n{e}")
 
     # ──────────────────────────────────────────
     # 이벤트 및 타이머 핸들러

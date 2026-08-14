@@ -1,6 +1,7 @@
 # ConsultParser2 개발 임시 요구사항 및 완료 이력
 
-## 📌 현재 반영 완료된 요구사항 (v1.2.0.Build.1)
+## 📌 현재 반영 완료된 요구사항 (v1.2.1.Build.1)
+- [x] PC 자동 종료 즉시 무력화 버튼 신설 (`🛑 종료 예약 취소 (shutdown /a)`)
 - [x] Gemini 사용량 및 쿼터 관리 대시보드 링크 연결
 - [x] STT_sample 핵심 파서 포팅: 전화번호 100% 보존 토큰 격리 정규식 파서
 - [x] m4a 음성 파일 수십 연도 재귀 폴더 탐색 (scan_folder) 및 completed_audio 이관
