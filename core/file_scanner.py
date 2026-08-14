@@ -48,6 +48,19 @@ def read_txt_content(filepath: Path) -> str:
     return "\n".join(clean_lines)
 
 
+def norm_ts(raw_ts: str) -> str:
+    """6자리 연도(YYMMDD_HHMMSS)를 8자리 연도(20YYMMDD_HHMMSS)로 호환 정규화합니다."""
+    if not raw_ts:
+        return ""
+    parts = raw_ts.split("_")
+    if len(parts) == 2:
+        date_p, time_p = parts[0], parts[1]
+        if len(date_p) == 6:
+            date_p = "20" + date_p
+        return f"{date_p}_{time_p}"
+    return raw_ts
+
+
 def _build_json_timestamp_map(result_json_dir: Path) -> dict[str, Path]:
     """
     result_json/ 폴더 내에 기존 저장된 JSON 파일들의 타임스탬프(YYYYMMDD_HHMMSS) 색인을 생성합니다.
@@ -56,12 +69,12 @@ def _build_json_timestamp_map(result_json_dir: Path) -> dict[str, Path]:
     if not result_json_dir.exists():
         return ts_map
 
-    ts_pattern = re.compile(r"(\d{8}_\d{6})")
+    ts_pattern = re.compile(r"(\d{8}_\d{6}|\d{6}_\d{6})")
 
     for json_file in result_json_dir.glob("*.json"):
         match = ts_pattern.search(json_file.name)
         if match:
-            ts = match.group(1)
+            ts = norm_ts(match.group(1))
             if ts not in ts_map:
                 ts_map[ts] = json_file
     return ts_map
@@ -75,12 +88,12 @@ def _build_txt_timestamp_map(stt_texts_dir: Path) -> dict[str, Path]:
     if not stt_texts_dir.exists():
         return ts_map
 
-    ts_pattern = re.compile(r"(\d{8}_\d{6})")
+    ts_pattern = re.compile(r"(\d{8}_\d{6}|\d{6}_\d{6})")
 
     for txt_file in stt_texts_dir.glob("*.txt"):
         match = ts_pattern.search(txt_file.name)
         if match:
-            ts = match.group(1)
+            ts = norm_ts(match.group(1))
             if ts not in ts_map:
                 ts_map[ts] = txt_file
     return ts_map
@@ -127,7 +140,7 @@ def scan_folder(
     detected_audio_count = 0
     detected_text_count = 0
 
-    ts_extractor = re.compile(r"(\d{8}_\d{6})")
+    ts_extractor = re.compile(r"(\d{8}_\d{6}|\d{6}_\d{6})")
 
     for root, dirs, files in os.walk(input_path):
         dirs[:] = [d for d in dirs if d.lower() not in EXCLUDE_DIR_NAMES]
@@ -171,7 +184,7 @@ def scan_folder(
             target_json_path = result_json_dir / target_json_filename
 
             ts_match = ts_extractor.search(orig_file.name)
-            ts = ts_match.group(1) if ts_match else ""
+            ts = norm_ts(ts_match.group(1)) if ts_match else ""
 
             if is_audio and ts and ts in txt_ts_map:
                 matched_txt = txt_ts_map[ts]
@@ -245,12 +258,13 @@ def sync_filenames_by_timestamp(
     json_ts_map = _build_json_timestamp_map(result_json_dir)
 
     AUDIO_EXTS = {".m4a", ".mp3", ".wav", ".aac", ".flac"}
-    EXCLUDE_DIR_NAMES = {"stt_texts", "result_json", "completed_audio", "result_output"}
-    ts_extractor = re.compile(r"(\d{8}_\d{6})")
+    EXCLUDE_DIR_NAMES = {"stt_texts", "result_json", "result_output"}
+    ts_extractor = re.compile(r"(\d{8}_\d{6}|\d{6}_\d{6})")
 
     # 1. 변경 대상 작업 수집
     rename_tasks: list[tuple[Path, Path]] = []  # (old_file_path, new_file_path)
 
+    # 1-A. input_folder 원본 폴더 내 음성 파일 수집
     for root, dirs, files in os.walk(input_path):
         dirs[:] = [d for d in dirs if d.lower() not in EXCLUDE_DIR_NAMES]
         root_path = Path(root).resolve()
@@ -264,7 +278,7 @@ def sync_filenames_by_timestamp(
 
             ts_match = ts_extractor.search(orig_file.name)
             if ts_match:
-                ts = ts_match.group(1)
+                ts = norm_ts(ts_match.group(1))
                 if ts in txt_ts_map:
                     matched_txt = txt_ts_map[ts]
                     expected_audio_name = f"{matched_txt.stem}{ext}"
@@ -273,12 +287,29 @@ def sync_filenames_by_timestamp(
                         if not target_path.exists():
                             rename_tasks.append((orig_file, target_path))
 
-    # JSON 파일 변경 대상 수집
+    # 1-B. completed_audio 출력 보관 폴더 내 음성 파일 전수 수집 및 동기화
+    completed_audio_dir = output_path / "completed_audio"
+    if completed_audio_dir.exists():
+        for audio_file in completed_audio_dir.glob("*.*"):
+            ext = audio_file.suffix.lower()
+            if ext in AUDIO_EXTS:
+                ts_match = ts_extractor.search(audio_file.name)
+                if ts_match:
+                    ts = norm_ts(ts_match.group(1))
+                    if ts in txt_ts_map:
+                        matched_txt = txt_ts_map[ts]
+                        expected_audio_name = f"{matched_txt.stem}{ext}"
+                        if audio_file.name != expected_audio_name:
+                            target_path = completed_audio_dir / expected_audio_name
+                            if not target_path.exists():
+                                rename_tasks.append((audio_file, target_path))
+
+    # 1-C. JSON 파일 변경 대상 수집
     if result_json_dir.exists():
         for json_file in result_json_dir.glob("*.json"):
             ts_match = ts_extractor.search(json_file.name)
             if ts_match:
-                ts = ts_match.group(1)
+                ts = norm_ts(ts_match.group(1))
                 if ts in txt_ts_map:
                     matched_txt = txt_ts_map[ts]
                     expected_json_name = f"{matched_txt.stem}.json"
