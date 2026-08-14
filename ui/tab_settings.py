@@ -1,6 +1,6 @@
 """
 ui/tab_settings.py
-설정 탭: Ollama vs Google Gemini 선택, Flash 모델 선택, API 키, 사용량/쿼터 링크, 스레드 수, 프롬프트 편집, 저장
+설정 탭: Ollama vs Google Gemini 선택, Flash 모델 선택, API 키, 사용량/쿼터 링크, 스레드 수, 접이식(Collapsible) 2단계 및 3단계 분석 프롬프트 편집기
 """
 import sys
 from PyQt5.QtWidgets import (
@@ -12,7 +12,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QUrl
 from PyQt5.QtGui import QDesktopServices
 
-from core.config_manager import load_config, save_config, get_default_prompt
+from core.config_manager import load_config, save_config, get_default_prompt, get_stage3_default_prompt
 from core.ollama_client import OllamaClient
 from core.gemini_client import GeminiClient
 from ui.widgets import PALETTE, make_separator
@@ -137,13 +137,12 @@ class SettingsTab(QWidget):
 
         root.addWidget(self.ollama_widget)
 
-        # ── Gemini 설정 섹션 (Pro 모델 완전 차단, Flash 선택형 라인업) ──
+        # ── Gemini 설정 섹션 ──
         self.gemini_widget = QWidget()
         gemini_layout = QVBoxLayout(self.gemini_widget)
         gemini_layout.setContentsMargins(0, 0, 0, 0)
         gemini_layout.setSpacing(0)
 
-        # 헤더 및 사용량 링크 버튼 행
         gemini_header_row = QHBoxLayout()
         gemini_header_row.addWidget(self._section_label("Google Gemini API 설정 (Flash 전용)"))
         gemini_header_row.addStretch()
@@ -214,7 +213,6 @@ class SettingsTab(QWidget):
         gemini_layout.addWidget(self.gemini_status_label)
         gemini_layout.addSpacing(12)
 
-        # Flash 모델 선택 콤보박스
         gemini_layout.addWidget(self._field_label("Gemini 모델 선택 (지정 모델 4종)"))
         self.gemini_model_combo = QComboBox()
         self.gemini_model_combo.addItems([
@@ -302,36 +300,114 @@ class SettingsTab(QWidget):
         root.addWidget(make_separator())
         root.addSpacing(14)
 
-        # ── 프롬프트 섹션 ──
-        root.addWidget(self._section_label("분석 프롬프트"))
-        root.addSpacing(4)
+        # ── [접이식 패널 1] 2단계 기본 분석 프롬프트 ──
+        self.btn_toggle_prompt = QPushButton("▶  📝 2단계 기본 분석 프롬프트 보기 / 편집하기 (클릭하여 펼치기)")
+        self.btn_toggle_prompt.setProperty("class", "secondary")
+        self.btn_toggle_prompt.setStyleSheet(f"""
+            QPushButton {{
+                color: {PALETTE['text_primary']};
+                background-color: {PALETTE['bg_secondary']};
+                border: 1px solid {PALETTE['border']};
+                font-weight: 700;
+                font-size: 13px;
+                padding: 10px 14px;
+                border-radius: 6px;
+                text-align: left;
+            }}
+            QPushButton:hover {{
+                background-color: {PALETTE['bg_tertiary']};
+                border: 1px solid {PALETTE['accent']};
+            }}
+        """)
+        self.btn_toggle_prompt.clicked.connect(self._toggle_prompt_panel)
+        root.addWidget(self.btn_toggle_prompt)
+        root.addSpacing(8)
+
+        # 2단계 프롬프트 팝업/접이식 컨테이너
+        self.prompt_container_widget = QWidget()
+        prompt_box_layout = QVBoxLayout(self.prompt_container_widget)
+        prompt_box_layout.setContentsMargins(0, 0, 0, 0)
+        prompt_box_layout.setSpacing(6)
 
         prompt_hint = QLabel("상담 텍스트(STT)는 분석 시 프롬프트 하단에 자동으로 결합되어 전달됩니다.")
         prompt_hint.setProperty("class", "muted")
-        root.addWidget(prompt_hint)
-        root.addSpacing(8)
+        prompt_box_layout.addWidget(prompt_hint)
 
         self.prompt_edit = QTextEdit()
-        self.prompt_edit.setMinimumHeight(220)
-        self.prompt_edit.setPlaceholderText("프롬프트를 입력하세요...")
-        root.addWidget(self.prompt_edit)
+        self.prompt_edit.setMinimumHeight(200)
+        self.prompt_edit.setPlaceholderText("2단계 분석 프롬프트를 입력하세요...")
+        prompt_box_layout.addWidget(self.prompt_edit)
+
+        # 기본값 초기화 버튼
+        self.reset_btn = QPushButton("2단계 기본 프롬프트로 초기화")
+        self.reset_btn.setProperty("class", "secondary")
+        self.reset_btn.setFixedWidth(200)
+        self.reset_btn.clicked.connect(self._reset_prompt)
+        prompt_box_layout.addWidget(self.reset_btn)
+
+        self.prompt_container_widget.setVisible(False)  # 초기 상태: 접힘 (Hidden)
+        root.addWidget(self.prompt_container_widget)
         root.addSpacing(12)
 
-        # ── 하단 버튼 ──
+        # ── [접이식 패널 2] 3단계 재분석 및 call_type 분류 전용 프롬프트 ──
+        self.btn_toggle_stage3 = QPushButton("▶  🔍 3단계 재분석/분류 전용 프롬프트 보기 / 편집하기 (클릭하여 펼치기)")
+        self.btn_toggle_stage3.setProperty("class", "secondary")
+        self.btn_toggle_stage3.setStyleSheet(f"""
+            QPushButton {{
+                color: #F59E0B;
+                background-color: {PALETTE['bg_secondary']};
+                border: 1px solid #F59E0B;
+                font-weight: 700;
+                font-size: 13px;
+                padding: 10px 14px;
+                border-radius: 6px;
+                text-align: left;
+            }}
+            QPushButton:hover {{
+                background-color: {PALETTE['bg_tertiary']};
+            }}
+        """)
+        self.btn_toggle_stage3.clicked.connect(self._toggle_stage3_prompt_panel)
+        root.addWidget(self.btn_toggle_stage3)
+        root.addSpacing(8)
+
+        # 3단계 프롬프트 팝업/접이식 컨테이너
+        self.stage3_container_widget = QWidget()
+        stage3_box_layout = QVBoxLayout(self.stage3_container_widget)
+        stage3_box_layout.setContentsMargins(0, 0, 0, 0)
+        stage3_box_layout.setSpacing(6)
+
+        stage3_hint = QLabel("3단계 수행 시 미검출(증상0/조치0) 건에 대해 call_type(REPAIR/INQUIRY/IRRELEVANT)을 정밀 판별하는 전용 프롬프트입니다.")
+        stage3_hint.setProperty("class", "muted")
+        stage3_box_layout.addWidget(stage3_hint)
+
+        self.stage3_prompt_edit = QTextEdit()
+        self.stage3_prompt_edit.setMinimumHeight(200)
+        self.stage3_prompt_edit.setPlaceholderText("3단계 재분석 전용 프롬프트를 입력하세요...")
+        stage3_box_layout.addWidget(self.stage3_prompt_edit)
+
+        self.reset_stage3_btn = QPushButton("3단계 기본 프롬프트로 초기화")
+        self.reset_stage3_btn.setProperty("class", "secondary")
+        self.reset_stage3_btn.setFixedWidth(200)
+        self.reset_stage3_btn.clicked.connect(self._reset_stage3_prompt)
+        stage3_box_layout.addWidget(self.reset_stage3_btn)
+
+        self.stage3_container_widget.setVisible(False)  # 초기 상태: 접힘 (Hidden)
+        root.addWidget(self.stage3_container_widget)
+        root.addSpacing(16)
+
+        # ── 하단 설정 저장 버튼 ──
         btn_row = QHBoxLayout()
-        self.reset_btn = QPushButton("기본값으로 초기화")
-        self.reset_btn.setProperty("class", "secondary")
-        self.reset_btn.clicked.connect(self._reset_prompt)
-        self.save_btn = QPushButton("설정 저장")
-        self.save_btn.setFixedWidth(120)
-        self.save_btn.clicked.connect(self._save_settings)
-        btn_row.addWidget(self.reset_btn)
         btn_row.addStretch()
+        self.save_btn = QPushButton("설정 저장")
+        self.save_btn.setFixedWidth(140)
+        self.save_btn.setMinimumHeight(36)
+        self.save_btn.clicked.connect(self._save_settings)
         btn_row.addWidget(self.save_btn)
         root.addLayout(btn_row)
 
     # ──────────────────────────────────────────
-    # 내부 메서드
+    # 내부 메서드 & 접이식 핸들러
     # ──────────────────────────────────────────
     def _section_label(self, text: str) -> QLabel:
         lbl = QLabel(text.upper())
@@ -342,6 +418,24 @@ class SettingsTab(QWidget):
         lbl = QLabel(text)
         lbl.setStyleSheet(f"color: {PALETTE['text_secondary']}; font-size: 12px; margin-bottom: 2px; white-space: nowrap;")
         return lbl
+
+    def _toggle_prompt_panel(self):
+        """2단계 프롬프트 접기/펼치기 토글"""
+        is_visible = self.prompt_container_widget.isVisible()
+        self.prompt_container_widget.setVisible(not is_visible)
+        if not is_visible:
+            self.btn_toggle_prompt.setText("▼  📝 2단계 기본 분석 프롬프트 접기")
+        else:
+            self.btn_toggle_prompt.setText("▶  📝 2단계 기본 분석 프롬프트 보기 / 편집하기 (클릭하여 펼치기)")
+
+    def _toggle_stage3_prompt_panel(self):
+        """3단계 프롬프트 접기/펼치기 토글"""
+        is_visible = self.stage3_container_widget.isVisible()
+        self.stage3_container_widget.setVisible(not is_visible)
+        if not is_visible:
+            self.btn_toggle_stage3.setText("▼  🔍 3단계 재분석/분류 전용 프롬프트 접기")
+        else:
+            self.btn_toggle_stage3.setText("▶  🔍 3단계 재분석/분류 전용 프롬프트 보기 / 편집하기 (클릭하여 펼치기)")
 
     def _on_engine_changed(self):
         is_ollama = self.radio_ollama.isChecked()
@@ -410,6 +504,7 @@ class SettingsTab(QWidget):
         self.skip_spin.setValue(self.config.get("skip_bytes", 512))
         self.thread_spin.setValue(self.config.get("threads", 1))
         self.prompt_edit.setPlainText(self.config.get("prompt", get_default_prompt()))
+        self.stage3_prompt_edit.setPlainText(self.config.get("stage3_prompt", get_stage3_default_prompt()))
 
         # 저장된 Ollama 모델 목록 로드 및 Gemma 3 / Qwen 3 표준 추천 목록
         saved_list = self.config.get("model_list", [])
@@ -465,11 +560,20 @@ class SettingsTab(QWidget):
     def _reset_prompt(self):
         reply = QMessageBox.question(
             self, "초기화 확인",
-            "프롬프트를 기본값으로 초기화하시겠습니까?",
+            "2단계 프롬프트를 기본값으로 초기화하시겠습니까?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
             self.prompt_edit.setPlainText(get_default_prompt())
+
+    def _reset_stage3_prompt(self):
+        reply = QMessageBox.question(
+            self, "초기화 확인",
+            "3단계 재분석 전용 프롬프트를 기본값으로 초기화하시겠습니까?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.stage3_prompt_edit.setPlainText(get_stage3_default_prompt())
 
     def _save_settings(self):
         engine_type = "gemini" if self.radio_gemini.isChecked() else "ollama"
@@ -483,6 +587,7 @@ class SettingsTab(QWidget):
         skip_bytes = self.skip_spin.value()
         threads = self.thread_spin.value()
         prompt = self.prompt_edit.toPlainText().strip()
+        stage3_prompt = self.stage3_prompt_edit.toPlainText().strip()
 
         if engine_type == "ollama" and not url:
             QMessageBox.warning(self, "입력 오류", "Ollama 서버 URL을 입력해주세요.")
@@ -491,7 +596,7 @@ class SettingsTab(QWidget):
             QMessageBox.warning(self, "입력 오류", "Google Gemini API 키를 입력해주세요.")
             return
         if not prompt:
-            QMessageBox.warning(self, "입력 오류", "프롬프트를 입력해주세요.")
+            QMessageBox.warning(self, "입력 오류", "2단계 프롬프트를 입력해주세요.")
             return
 
         w_model_raw = self.whisper_model_combo.currentText()
@@ -517,6 +622,7 @@ class SettingsTab(QWidget):
             "skip_bytes": skip_bytes,
             "threads": threads,
             "prompt": prompt,
+            "stage3_prompt": stage3_prompt,
         })
         save_config(self.config)
         self.config_saved.emit()
@@ -549,4 +655,5 @@ class SettingsTab(QWidget):
             "skip_bytes": self.skip_spin.value(),
             "threads": self.thread_spin.value(),
             "prompt": self.prompt_edit.toPlainText().strip(),
+            "stage3_prompt": self.stage3_prompt_edit.toPlainText().strip(),
         }

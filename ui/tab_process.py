@@ -203,7 +203,8 @@ class ProcessWorker(QThread):
         cfg = self.config
         mode = self.process_mode
         engine_type = cfg.get("engine_type", "ollama")
-        prompt = cfg["prompt"]
+        prompt = cfg.get("prompt", "")
+        stage3_prompt = cfg.get("stage3_prompt", "")
         skip_bytes = cfg.get("skip_bytes", 512)
 
         stt_engine = None
