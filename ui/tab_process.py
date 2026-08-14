@@ -515,7 +515,39 @@ class ProcessWorker(QThread):
                         content = read_txt_content(txt_p)
                         stripped = content.strip()
 
-                        # 💡 [원칙론적 근본 개선 1] 15자 이하 단문 또는 스팸/연결음 문구는 팝업조차 띄우지 않고 0초 자동 사전 스킵!
+                        def _apply_fail_tag(status_tag: str):
+                            skip_res = {
+                                "audio_filename": txt_p.stem,
+                                "processing_status": status_tag,
+                                "model_used": llm_model,
+                                "customer_name": "미지정",
+                                "symptoms": [],
+                                "actions": []
+                            }
+                            try:
+                                json_p.parent.mkdir(parents=True, exist_ok=True)
+                                json_p.write_text(json.dumps(skip_res, ensure_ascii=False, indent=2), encoding="utf-8")
+                            except Exception:
+                                pass
+
+                            if "_파싱실패" not in txt_p.stem:
+                                fail_stem = f"{txt_p.stem}_파싱실패"
+                                fail_txt_p = txt_p.parent / f"{fail_stem}.txt"
+                                fail_json_p = json_p.parent / f"{fail_stem}.json"
+                                try:
+                                    if txt_p.exists() and not fail_txt_p.exists():
+                                        txt_p.rename(fail_txt_p)
+                                    if json_p.exists() and not fail_json_p.exists():
+                                        json_p.rename(fail_json_p)
+                                    audio_dir = txt_p.parent.parent / "completed_audio"
+                                    old_m4a = audio_dir / f"{txt_p.stem}.m4a"
+                                    fail_m4a = audio_dir / f"{fail_stem}.m4a"
+                                    if old_m4a.exists() and not fail_m4a.exists():
+                                        old_m4a.rename(fail_m4a)
+                                except Exception:
+                                    pass
+
+                        # 💡 [원칙론적 개선 1] 15자 이하 단문 또는 스팸/연결음 문구는 팝업조차 띄우지 않고 0초 자동 사전 스킵!
                         is_garbage = (
                             len(stripped) < 15 or 
                             "연결되지 않았습니다" in stripped or 
@@ -524,9 +556,10 @@ class ProcessWorker(QThread):
                             "광고" in stripped
                         )
                         if is_garbage:
-                            self.log_signal.emit(f"   🚫 [자동 감지] 단문/스팸/연결음 ➔ 팝업 없이 0초 자동 스킵 완료 ({name})", "warning")
+                            self.log_signal.emit(f"   🚫 [자동 감지] 단문/스팸/연결음 ➔ '_파싱실패' 태그 부여 및 0초 자동 스킵 ({name})", "warning")
+                            _apply_fail_tag("skipped_empty")
                             skipped_cnt += 1
-                            self.file_done_signal.emit(txt_p.stem, "skip", "", 0.0)
+                            self.file_done_signal.emit(txt_p.stem, "skip", str(json_p), 0.0)
                             self.progress_signal.emit(idx + 1, total_txt, "[2단계 txt >> Json]")
                             continue
 
@@ -540,10 +573,11 @@ class ProcessWorker(QThread):
                                 self.log_signal.emit("⏹ 사용자 요청으로 중지되었습니다.", "warning")
                                 break
                             elif user_act == "skip":
-                                # 💡 [원칙론적 근본 개선 2] 스킵 클릭 시 구글드라이브 동기 리네임 및 JSON 디스크 I/O 완전 제거! 0.00초 인메모리 Pass!
-                                self.log_signal.emit(f"   🚫 사용자 판별 파싱 불가 ➔ 0.00초 즉시 Pass 스킵 완료 ({name})", "warning")
+                                # 💡 [원칙론적 개선 2] 수동 스킵 클릭 시 '_파싱실패' 태그 디스크 연동 부여 및 비동기 스킵!
+                                self.log_signal.emit(f"   🚫 사용자 판별 파싱 불가 ➔ '_파싱실패' 태그 부여 및 즉시 스킵 ({name})", "warning")
+                                _apply_fail_tag("skipped_user")
                                 skipped_cnt += 1
-                                self.file_done_signal.emit(txt_p.stem, "skip", "", 0.0)
+                                self.file_done_signal.emit(txt_p.stem, "skip", str(json_p), 0.0)
                                 self.progress_signal.emit(idx + 1, total_txt, "[2단계 txt >> Json]")
                                 continue
 
