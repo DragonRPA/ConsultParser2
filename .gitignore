@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.vscode/
+.idea/
+*.log
+result_output/
+stt_texts/
+result_json/
+completed_audio/
+core/config.json
