@@ -246,7 +246,7 @@ def scan_folder(
                 size_bytes=size,
                 stt_done=is_stt_done,
                 json_done=is_json_done,
-                skipped_small=(size <= skip_bytes if not is_audio else False),
+                skipped_small=(size == 0 or size <= skip_bytes if not is_audio else False),
                 parsed_info=parsed
             ))
 

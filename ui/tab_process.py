@@ -366,8 +366,20 @@ class ProcessWorker(QThread):
                     try:
                         content = read_txt_content(txt_p)
                         if not content.strip():
-                            self.log_signal.emit(f"   ⚠ 내용 없음 → 스킵 ({size_str})", "warning")
+                            self.log_signal.emit(f"   ⚠️ 내용 없음 ➔ 스킵 ({size_str})", "warning")
+                            # 💡 0B / 빈 파일 스킵 시 결과 JSON을 skipped_empty 상태로 기록하여 다음 스캔 시 2단계 분석 목록에서 영구 차단!
+                            skip_result = {
+                                "audio_filename": txt_p.stem,
+                                "processing_status": "skipped_empty",
+                                "model_used": llm_model,
+                                "customer_name": "미지정",
+                                "symptoms": [],
+                                "actions": []
+                            }
+                            json_p.parent.mkdir(parents=True, exist_ok=True)
+                            json_p.write_text(json.dumps(skip_result, ensure_ascii=False, indent=2), encoding="utf-8")
                             skipped_cnt += 1
+                            self.file_done_signal.emit(txt_p.stem, "skip", str(json_p), 0.0)
                             continue
 
                         def _status_cb(msg: str, color: str):
